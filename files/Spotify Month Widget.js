@@ -4,9 +4,8 @@
 
 /**
  * Stats.fm Widget (Top 3 Albums & Tracks)
- * Author: Michael Wagner, michaelwagner.cc
- * Version: 1.0.0
- * Date: December 23, 2024
+ * Author: Michael Wagner, michi.onl
+ * Date: May 26, 2025
  *
  * GitHub: https://github.com/Mixhi1845/statsfm-widget
  * License: Apache 2.0
@@ -248,7 +247,7 @@ function addFooter(widget) {
  * @returns {Promise<Array|null>} Array of chart items or null on error
  */
 async function fetchChartData(type) {
-  const url = `${CONFIG.API_BASE_URL}/users/${CONFIG.SPOTIFY_TOKEN}/top/${type}s?range=weeks`;
+  const url = `${CONFIG.API_BASE_URL}/users/${CONFIG.SPOTIFY_USERNAME}/top/${type}s?range=weeks`;
 
   try {
     const request = new Request(url);
