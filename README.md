@@ -22,14 +22,6 @@ Displays the top 3 tracks and albums from your Spotify account, powered by data 
 
 - Update the `SPOTIFY_USERNAME` in the `CONFIG` object with your Spotify Username.
 
-**Setup**:
-
-1. Copy the `Spotify Month Widget.js` file into Scriptable.
-2. Add the widget to your home screen and select the script.
-3. Enjoy your personalized Spotify stats!
-
----
-
 ### 2. Movie & TV Widget
 
 **Description**:  
@@ -42,12 +34,6 @@ Displays the top 3 movies and TV shows from IMDB's most popular charts.
 - Displays star ratings with a visual star icon.
 - Includes clickable links to open items in the IMDB app.
 
-**Setup**:
-
-1. Copy the `Movie & TV Widget.js` file into Scriptable.
-2. Add the widget to your home screen and select the script.
-3. Stay updated with the latest trending movies and TV shows!
-
 ---
 
 ## Requirements
@@ -55,8 +41,25 @@ Displays the top 3 movies and TV shows from IMDB's most popular charts.
 - [Scriptable](https://scriptable.app/) app installed on your iOS device.
 - Spotify Username and Stats.fm account (via Stats.fm) and IMDB data.
 
+## Installation
+
+### Setup in Scriptable:
+
+1. Copy one of the `.js` files from `/files` into Scriptable.
+
+### Place it on the Home Screen
+
+1. Long press on an app on the home screen
+2. Select "Edit Home Screen"
+3. Tap the "+" at the top
+4. Scroll down to find "Scriptable"
+5. Select desired widget size
+6. Tap the new widget
+7. Select this script
+8. Configure parameters if needed
+
 ---
 
 ## License
 
-Both widgets are licensed under the Unlicense.
+The widgets are licensed under the Unlicense.
