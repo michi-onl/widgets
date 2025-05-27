@@ -11,32 +11,22 @@ GitHub: https://github.com/michi-onl/widgets
 This Scriptable widget displays the top 3 movies and TV shows from IMDB's charts.
 */
 
-// Configuration
 const CONFIG = {
-  // Your API endpoint URL - UPDATE THIS TO YOUR DOMAIN
   API_URL: "https://api.michi.onl/api/charts/imdb/tv-movie",
-
-  // Refresh interval in hours
   REFRESH_HOURS: 24,
-
-  // Widget appearance
   COLORS: {
-    background: null, // Use system default
-    text: Color.white(),
     subtitle: Color.gray(),
     star: Color.yellow(),
     error: Color.red(),
   },
 };
 
-// Font sizes for different widget sizes
 const FONT_SIZES = {
   small: { title: 9, subtitle: 8, rating: 9, star: 9 },
   medium: { title: 12, subtitle: 10, rating: 12, star: 12 },
   large: { title: 14, subtitle: 12, rating: 14, star: 14 },
 };
 
-// Main execution
 const widgetSize = config.widgetFamily || "medium";
 const widget = await createWidget();
 
@@ -50,9 +40,6 @@ if (!config.runInWidget) {
 Script.setWidget(widget);
 Script.complete();
 
-/**
- * Creates and configures the main widget
- */
 async function createWidget() {
   const widget = new ListWidget();
   widget.refreshAfterDate = new Date(
@@ -75,9 +62,6 @@ async function createWidget() {
   return widget;
 }
 
-/**
- * Fetches data from the IMDB API endpoint
- */
 async function fetchImdbData() {
   try {
     const request = new Request(CONFIG.API_URL);
@@ -96,21 +80,16 @@ async function fetchImdbData() {
   }
 }
 
-/**
- * Builds the main widget content
- */
 function buildWidgetContent(widget, data) {
   const body = widget.addStack();
   body.layoutHorizontally();
 
-  // Add movies column
   if (data.movies.length > 0) {
     const moviesColumn = body.addStack();
     moviesColumn.layoutVertically();
     data.movies.forEach((movie) => addMediaItem(moviesColumn, movie));
   }
 
-  // Add TV shows column (medium and large widgets only)
   if (data.tvShows.length > 0 && widgetSize !== "small") {
     body.addSpacer(10);
     const tvColumn = body.addStack();
@@ -124,9 +103,6 @@ function buildWidgetContent(widget, data) {
   }
 }
 
-/**
- * Adds a logo to the specified stack
- */
 async function addLogo(stack, imageUrl, size, appUrl, cornerRadius = 0) {
   try {
     const image = await loadImage(imageUrl);
@@ -148,31 +124,24 @@ async function addLogo(stack, imageUrl, size, appUrl, cornerRadius = 0) {
   }
 }
 
-/**
- * Adds a media item (movie or TV show) to the widget
- */
 function addMediaItem(column, item) {
   const stack = column.addStack();
   stack.layoutHorizontally();
   stack.setPadding(4, 0, 4, 0);
   stack.centerAlignContent();
 
-  // Set click URL if href is available
   if (item.href && item.href !== "N/A") {
     stack.url = `imdb://m.imdb.com${item.href}`;
   }
 
-  // Text content
   const textContainer = stack.addStack();
   const textStack = textContainer.addStack();
   textStack.layoutVertically();
   textContainer.addSpacer();
 
-  // Title
   const titleText = textStack.addText(item.title || "Unknown Title");
   titleText.font = Font.systemFont(FONT_SIZES[widgetSize].title);
 
-  // Subtitle (year, length, age rating)
   const subtitleParts = [
     item.year || "Unknown Year",
     item.length || "N/A",
@@ -185,20 +154,15 @@ function addMediaItem(column, item) {
 
   stack.addSpacer();
 
-  // Rating with star
   if (item.rating && item.rating !== "N/A") {
     addRatingSection(stack, item.rating);
   }
 }
 
-/**
- * Adds the rating section with star icon
- */
 function addRatingSection(stack, rating) {
   const ratingStack = stack.addStack();
   ratingStack.centerAlignContent();
 
-  // Star icon
   const star = ratingStack.addImage(SFSymbol.named("star.fill").image);
   star.tintColor = CONFIG.COLORS.star;
   star.imageSize = new Size(
@@ -208,14 +172,10 @@ function addRatingSection(stack, rating) {
 
   ratingStack.addSpacer(2);
 
-  // Rating number
   const ratingText = ratingStack.addText(rating);
   ratingText.font = Font.boldSystemFont(FONT_SIZES[widgetSize].rating);
 }
 
-/**
- * Adds footer to large widgets
- */
 function addFooter(widget) {
   const footer = widget.addStack();
   footer.layoutHorizontally();
@@ -231,9 +191,6 @@ function addFooter(widget) {
   footerText.color = new Color("#efefef");
 }
 
-/**
- * Creates an error widget with the specified message
- */
 function createErrorWidget(widget, message) {
   const errorText = widget.addText(message);
   errorText.font = Font.italicSystemFont(12);
@@ -241,9 +198,6 @@ function createErrorWidget(widget, message) {
   return widget;
 }
 
-/**
- * Loads an image from URL with error handling
- */
 async function loadImage(url) {
   try {
     const request = new Request(url);

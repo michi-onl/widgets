@@ -11,7 +11,6 @@ GitHub: https://github.com/michi-onl/widgets
 This Scriptable widget displays top tracks and albums from a Spotify user based on data from Stats.fm.
  */
 
-// Configuration
 const CONFIG = {
   SPOTIFY_USERNAME: "",
   REFRESH_HOURS: 24,
@@ -26,7 +25,6 @@ const CONFIG = {
   },
 };
 
-// Main execution
 async function main() {
   try {
     const widgetSize = config.widgetFamily || "medium";
@@ -47,11 +45,6 @@ async function main() {
   }
 }
 
-/**
- * Creates the main widget
- * @param {string} widgetSize - The size of the widget (small, medium, large)
- * @returns {Promise<ListWidget>} The configured widget
- */
 async function createWidget(widgetSize) {
   const widget = new ListWidget();
   widget.refreshAfterDate = new Date(
@@ -78,17 +71,11 @@ async function createWidget(widgetSize) {
   }
 }
 
-/**
- * Fetches and processes data from Stats.fm API
- * @param {string} widgetSize - The widget size to determine data requirements
- * @returns {Promise<Object>} Processed data object
- */
 async function fetchAndProcessData(widgetSize) {
   const dataPromises = {
     track: fetchChartData("track"),
   };
 
-  // Only fetch album data for medium and large widgets
   if (widgetSize !== "small") {
     dataPromises.album = fetchChartData("album");
   }
@@ -96,12 +83,10 @@ async function fetchAndProcessData(widgetSize) {
   const resolvedData = await Promise.allSettled(Object.values(dataPromises));
   const data = {};
 
-  // Process track data
   if (resolvedData[0].status === "fulfilled" && resolvedData[0].value) {
     data.track = await preloadImages(resolvedData[0].value);
   }
 
-  // Process album data if available
   if (
     resolvedData[1] &&
     resolvedData[1].status === "fulfilled" &&
@@ -113,12 +98,6 @@ async function fetchAndProcessData(widgetSize) {
   return data;
 }
 
-/**
- * Builds the main content of the widget
- * @param {ListWidget} widget - The widget to populate
- * @param {Object} data - The processed data
- * @param {string} widgetSize - The widget size
- */
 async function buildWidgetContent(widget, data, widgetSize) {
   const mainStack = widget.addStack();
   mainStack.layoutHorizontally();
@@ -147,12 +126,6 @@ async function buildWidgetContent(widget, data, widgetSize) {
   await addSpotifyIcon(mainStack);
 }
 
-/**
- * Adds an item (track/album) to a column
- * @param {WidgetStack} column - The column stack to add to
- * @param {Object} item - The item data
- * @param {string} widgetSize - The widget size
- */
 function addItemToColumn(column, item, widgetSize) {
   const itemStack = column.addStack();
   itemStack.layoutHorizontally();
@@ -166,11 +139,6 @@ function addItemToColumn(column, item, widgetSize) {
   addItemText(itemStack, item, widgetSize);
 }
 
-/**
- * Adds an image to an item stack
- * @param {WidgetStack} stack - The stack to add the image to
- * @param {Image} image - The image to add
- */
 function addItemImage(stack, image) {
   const imageStack = stack.addStack();
   const imageElement = imageStack.addImage(image);
@@ -178,12 +146,6 @@ function addItemImage(stack, image) {
   imageStack.centerAlignContent();
 }
 
-/**
- * Adds text content to an item stack
- * @param {WidgetStack} stack - The stack to add text to
- * @param {Object} item - The item data
- * @param {string} widgetSize - The widget size
- */
 function addItemText(stack, item, widgetSize) {
   const textStack = stack.addStack();
   textStack.layoutVertically();
@@ -198,10 +160,6 @@ function addItemText(stack, item, widgetSize) {
   subText.textColor = Color.gray();
 }
 
-/**
- * Adds the Spotify icon to the widget
- * @param {WidgetStack} stack - The stack to add the icon to
- */
 async function addSpotifyIcon(stack) {
   try {
     const spotifyImage = await loadImage(CONFIG.SPOTIFY_LOGO_URL);
@@ -218,10 +176,6 @@ async function addSpotifyIcon(stack) {
   }
 }
 
-/**
- * Adds a footer to the widget
- * @param {ListWidget} widget - The widget to add the footer to
- */
 function addFooter(widget) {
   const footer = widget.addStack();
   footer.layoutHorizontally();
@@ -238,11 +192,6 @@ function addFooter(widget) {
   text.rightAlignText();
 }
 
-/**
- * Fetches chart data from Stats.fm API
- * @param {string} type - The type of data to fetch (track or album)
- * @returns {Promise<Array|null>} Array of chart items or null on error
- */
 async function fetchChartData(type) {
   const url = `${CONFIG.API_BASE_URL}/users/${CONFIG.SPOTIFY_USERNAME}/top/${type}s?range=weeks`;
 
@@ -264,13 +213,6 @@ async function fetchChartData(type) {
   }
 }
 
-/**
- * Formats a chart item for display
- * @param {Object} item - The raw API item
- * @param {string} type - The item type (track or album)
- * @param {number} index - The item index
- * @returns {Object} Formatted item
- */
 function formatChartItem(item, type, index) {
   const itemData = item[type];
 
@@ -281,19 +223,11 @@ function formatChartItem(item, type, index) {
   };
 }
 
-/**
- * Gets the image URL for an item
- * @param {Object} itemData - The item data
- * @param {string} type - The item type
- * @returns {string|null} The image URL or null
- */
 function getImageUrl(itemData, type) {
   if (!itemData) return null;
 
-  // Direct image property
   if (itemData.image) return itemData.image;
 
-  // Album images for tracks
   if (type === "track" && itemData.albums?.[0]?.image) {
     return itemData.albums[0].image;
   }
@@ -301,11 +235,6 @@ function getImageUrl(itemData, type) {
   return null;
 }
 
-/**
- * Preloads images for chart items
- * @param {Array} items - Array of items with imgSrc properties
- * @returns {Promise<Array>} Items with loaded images
- */
 async function preloadImages(items) {
   if (!items || !Array.isArray(items)) return null;
 
@@ -324,11 +253,6 @@ async function preloadImages(items) {
   return await Promise.all(imagePromises);
 }
 
-/**
- * Loads an image from a URL
- * @param {string} url - The image URL
- * @returns {Promise<Image|null>} The loaded image or null on error
- */
 async function loadImage(url) {
   if (!url) return null;
 
@@ -341,11 +265,6 @@ async function loadImage(url) {
   }
 }
 
-/**
- * Creates an error widget
- * @param {string} message - The error message to display
- * @returns {ListWidget} The error widget
- */
 function createErrorWidget(message) {
   const widget = new ListWidget();
   const errorText = widget.addText(message);
@@ -354,30 +273,15 @@ function createErrorWidget(message) {
   return widget;
 }
 
-/**
- * Capitalizes the first letter of a string
- * @param {string} str - The string to capitalize
- * @returns {string} The capitalized string
- */
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-/**
- * Cleans track/album titles by removing feature annotations
- * @param {string} title - The title to clean
- * @returns {string} The cleaned title
- */
 function cleanTitle(title) {
   if (!title || typeof title !== "string") return "";
   return title.replace(/\(feat\. .*?\)/gi, "").trim();
 }
 
-/**
- * Formats numbers with appropriate suffixes
- * @param {number} num - The number to format
- * @returns {string} The formatted number
- */
 function formatNumber(num) {
   if (num >= 1000000) {
     return (num / 1000000).toFixed(1) + "M";
@@ -387,5 +291,4 @@ function formatNumber(num) {
   return num.toString();
 }
 
-// Execute main function
 await main();
