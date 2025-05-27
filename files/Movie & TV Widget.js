@@ -2,29 +2,19 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: yellow; icon-glyph: video;
 
-/************************************************
-Top 3 Movies & TV Shows (IMDB)
-Updated for Next.js API endpoint
-v2.0.0
+/*
+IMDB Widget (Top 3 TV & Movie)
+Author: Michael Wagner, michi.onl
+ 
+GitHub: https://github.com/michi-onl/widgets
 
-This Scriptable widget displays the top 3 movies and TV shows 
-from IMDB's most popular charts.
-
-Installation:
-1. Long press on an app on the home screen
-2. Select "Edit Home Screen"
-3. Tap the "+" at the top
-4. Scroll down to find "Scriptable"
-5. Select desired widget size
-6. Tap the new widget
-7. Select this script
-8. Configure parameters if needed
-************************************************/
+This Scriptable widget displays the top 3 movies and TV shows from IMDB's charts.
+*/
 
 // Configuration
 const CONFIG = {
   // Your API endpoint URL - UPDATE THIS TO YOUR DOMAIN
-  API_URL: "https://api.michi.onl/api/v1/imdb",
+  API_URL: "https://api.michi.onl/api/charts/imdb/tv-movie",
 
   // Refresh interval in hours
   REFRESH_HOURS: 24,
