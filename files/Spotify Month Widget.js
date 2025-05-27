@@ -2,16 +2,13 @@
 // These must be at the very top of the file. Do not edit.
 // icon-color: deep-green; icon-glyph: signal;
 
-/**
- * Stats.fm Widget (Top 3 Albums & Tracks)
- * Author: Michael Wagner, michi.onl
- * Date: May 26, 2025
- *
- * GitHub: https://github.com/Mixhi1845/statsfm-widget
- * License: Apache 2.0
- *
- * This Scriptable widget displays top tracks and albums from a Spotify user
- * based on data from Stats.fm.
+/*
+Stats.fm Widget (Top 3 Albums & Tracks)
+Author: Michael Wagner, michi.onl
+
+GitHub: https://github.com/michi-onl/widgets
+
+This Scriptable widget displays top tracks and albums from a Spotify user based on data from Stats.fm.
  */
 
 // Configuration
