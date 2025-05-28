@@ -47,6 +47,17 @@ Presents data of a book, which is defined by the ISBN number specified in the wi
 
 - Update the Parameter of the widget following steps 6. to 8. in the Installation below to update the widget with your ISBN-10 number.
 
+### 4. Billboard 200 Widget
+
+**Description**:  
+Displays the top 6 albums from the Billboard 200 album chart.
+
+**Features**:
+
+- Responsive to Widget Size
+- Colored Position Change Tracking
+- Automatic Data Refresh
+
 ---
 
 ## Requirements

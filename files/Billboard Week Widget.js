@@ -8,7 +8,7 @@ Author: Michael Wagner, michi.onl
  
 GitHub: https://github.com/michi-onl/widgets
 
-This Scriptable widget displays the top 6 albums from Billboard's 200 albums charts.
+The Scriptable widget displays the top 6 albums from the Billboard 200 album chart.
 */
 
 const CONFIG = {
