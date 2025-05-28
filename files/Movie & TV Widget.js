@@ -87,6 +87,10 @@ function buildWidgetContent(widget, data) {
   if (data.movies.length > 0) {
     const moviesColumn = body.addStack();
     moviesColumn.layoutVertically();
+    const chartTitle = moviesColumn.addText("Movies");
+    chartTitle.font = Font.boldSystemFont(11);
+    chartTitle.textColor = Color.gray();
+    moviesColumn.addSpacer(2);
     data.movies.forEach((movie) => addMediaItem(moviesColumn, movie));
   }
 
@@ -94,33 +98,16 @@ function buildWidgetContent(widget, data) {
     body.addSpacer(10);
     const tvColumn = body.addStack();
     tvColumn.layoutVertically();
+    const chartTitle = tvColumn.addText("Shows");
+    chartTitle.font = Font.boldSystemFont(11);
+    chartTitle.textColor = Color.gray();
+    tvColumn.addSpacer(2);
     data.tvShows.forEach((show) => addMediaItem(tvColumn, show));
   }
 
   if (widgetSize === "large") {
     widget.addSpacer();
     addFooter(widget);
-  }
-}
-
-async function addLogo(stack, imageUrl, size, appUrl, cornerRadius = 0) {
-  try {
-    const image = await loadImage(imageUrl);
-    if (image) {
-      const iconStack = stack.addStack();
-      iconStack.centerAlignContent();
-
-      const icon = iconStack.addImage(image);
-      icon.imageSize = size;
-      icon.centerAlignImage();
-      icon.url = appUrl;
-
-      if (cornerRadius > 0) {
-        icon.cornerRadius = cornerRadius;
-      }
-    }
-  } catch (error) {
-    console.error("Logo loading error:", error);
   }
 }
 

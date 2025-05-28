@@ -19,9 +19,9 @@ const CONFIG = {
     "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png",
   MAX_ITEMS: 3,
   WIDGET_SIZES: {
-    small: { name: [9, 8], spacer: 5 },
-    medium: { name: [12, 10], spacer: 10 },
-    large: { name: [14, 12], spacer: 10 },
+    small: { name: [9, 8], spacer: 4 },
+    medium: { name: [12, 10], spacer: 8 },
+    large: { name: [14, 12], spacer: 8 },
   },
 };
 
@@ -103,6 +103,7 @@ async function buildWidgetContent(widget, data, widgetSize) {
   mainStack.layoutHorizontally();
 
   const contentTypes = ["track", "album"];
+  const columnTitles = { track: "Songs", album: "Albums" };
   let addedColumns = 0;
 
   for (const type of contentTypes) {
@@ -113,6 +114,12 @@ async function buildWidgetContent(widget, data, widgetSize) {
 
       const column = mainStack.addStack();
       column.layoutVertically();
+
+      const titleText = column.addText(columnTitles[type]);
+      titleText.font = Font.boldSystemFont(11);
+      titleText.textColor = Color.gray();
+      titleText.leftAlignText();
+      column.addSpacer(4);
 
       for (const item of data[type]) {
         addItemToColumn(column, item, widgetSize);
@@ -129,11 +136,11 @@ async function buildWidgetContent(widget, data, widgetSize) {
 function addItemToColumn(column, item, widgetSize) {
   const itemStack = column.addStack();
   itemStack.layoutHorizontally();
-  itemStack.setPadding(5, 0, 5, 0);
+  itemStack.setPadding(4, 0, 4, 0);
 
   if (item.img) {
     addItemImage(itemStack, item.img);
-    itemStack.addSpacer(10);
+    itemStack.addSpacer(8);
   }
 
   addItemText(itemStack, item, widgetSize);
