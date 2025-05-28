@@ -34,6 +34,19 @@ Displays the top 3 movies and TV shows from IMDB's most popular charts.
 - Displays star ratings with a visual star icon.
 - Includes clickable links to open items in the IMDB app.
 
+### 3. Currently Reading Widget
+
+**Description**:  
+Presents data of a book, which is defined by the ISBN number specified in the widget’s settings.
+
+**Features**:
+
+- Shows cover and metadata of the provided ISBN-10 number.
+
+**Configuration**:
+
+- Update the Parameter of the widget following steps 6. to 8. in the Installation below to update the widget with your ISBN-10 number.
+
 ---
 
 ## Requirements
@@ -57,6 +70,9 @@ Displays the top 3 movies and TV shows from IMDB's most popular charts.
 6. Tap the new widget
 7. Select this script
 8. Configure parameters if needed
+
+Note: **Several widgets can be placed** on the home screen
+and configured individually!
 
 ---
 
