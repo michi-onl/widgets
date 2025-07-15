@@ -8,15 +8,15 @@ Author: Michael Wagner, michi.onl
 
 GitHub: https://github.com/michi-onl/widgets
 
-This Scriptable widget displays top tracks and albums from a Spotify user based on data from Stats.fm.
+This Scriptable widget displays the top three tracks and albums from a Stats.fm user account, based on Spotify and Apple Music data gathered from Stats.fm.
  */
 
 const CONFIG = {
-  SPOTIFY_USERNAME: "",
-  REFRESH_HOURS: 24,
+  USER_ID: "31mckhdwyvws5yaem2j3jhku636y",
   API_BASE_URL: "https://api.stats.fm/api/v1",
-  SPOTIFY_LOGO_URL:
-    "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png",
+  STATSFM_LOGO_URL:
+    "https://cdn.brandfetch.io/idOZib4c5s/w/180/h/180/theme/dark/logo.png?c=1dxbfHSJFAPEGdCLU4o5B",
+  REFRESH_HOURS: 24,
   MAX_ITEMS: 3,
   WIDGET_SIZES: {
     small: { name: [9, 8], spacer: 4 },
@@ -130,7 +130,7 @@ async function buildWidgetContent(widget, data, widgetSize) {
   }
 
   mainStack.addSpacer();
-  await addSpotifyIcon(mainStack);
+  await addStatsfmIcon(mainStack);
 }
 
 function addItemToColumn(column, item, widgetSize) {
@@ -167,19 +167,19 @@ function addItemText(stack, item, widgetSize) {
   subText.textColor = Color.gray();
 }
 
-async function addSpotifyIcon(stack) {
+async function addStatsfmIcon(stack) {
   try {
-    const spotifyImage = await loadImage(CONFIG.SPOTIFY_LOGO_URL);
-    if (spotifyImage) {
+    const statsfmImage = await loadImage(CONFIG.STATSFM_LOGO_URL);
+    if (statsfmImage) {
       const iconStack = stack.addStack();
-      const icon = iconStack.addImage(spotifyImage);
+      const icon = iconStack.addImage(statsfmImage);
       icon.centerAlignImage();
       icon.imageSize = new Size(25, 25);
-      icon.url = "spotify://";
+      icon.url = "statsfm://";
       iconStack.centerAlignContent();
     }
   } catch (error) {
-    console.error("Failed to load Spotify icon:", error);
+    console.error("Failed to load Statsfm icon:", error);
   }
 }
 
@@ -200,7 +200,7 @@ function addFooter(widget) {
 }
 
 async function fetchChartData(type) {
-  const url = `${CONFIG.API_BASE_URL}/users/${CONFIG.SPOTIFY_USERNAME}/top/${type}s?range=weeks`;
+  const url = `${CONFIG.API_BASE_URL}/users/${CONFIG.USER_ID}/top/${type}s?range=weeks`;
 
   try {
     const request = new Request(url);
