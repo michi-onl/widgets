@@ -6,21 +6,21 @@ This repository contains custom widgets for the [Scriptable](https://scriptable.
 
 ## Widgets
 
-### 1. Spotify Month Widget
+### 1. Stats.fm Month Widget
 
 **Description**:  
-Displays the top 3 tracks and albums from your Spotify account, powered by data from [Stats.fm](https://stats.fm/).
+This Scriptable widget displays the top three tracks and albums from a Stats.fm user account, based on Spotify and Apple Music data gathered from [Stats.fm](https://stats.fm/).
 
 **Features**:
 
 - Shows top tracks and albums with album art.
 - Displays the number of streams for each item.
 - Automatically refreshes every 24 hours.
-- Includes a Spotify logo with a direct link to the Spotify app.
+- Includes a logo with a direct link to the stats.fm app.
 
 **Configuration**:
 
-- Update the `SPOTIFY_USERNAME` in the `CONFIG` object with your Spotify Username.
+- Update the `USER_ID` in the `CONFIG` object with your Spotify Username.
 
 ### 2. Movie & TV Widget
 
@@ -54,16 +54,28 @@ Displays the top 6 albums from the Billboard 200 album chart.
 
 **Features**:
 
-- Responsive to Widget Size
+- Responsive to widget size
 - Colored Position Change Tracking
 - Automatic Data Refresh
+
+### 5. Steam Recent Activity Widget
+
+**Description**:  
+Displays recent Steam games and activity.
+
+**Features**:
+
+- Responsive to widget size
+- Includes data like total time played and last played date
+- Shows images of games
+- Automatic data refresh
 
 ---
 
 ## Requirements
 
 - [Scriptable](https://scriptable.app/) app installed on your iOS device.
-- Spotify Username and Stats.fm account (via Stats.fm) and IMDB data.
+- Spotify, Steam Username, and Stats.fm account (via Stats.fm) for respective widgets.
 
 ## Installation
 
