@@ -16,7 +16,7 @@ const CONFIG = {
   refreshHours: 24,
   apiUrl: "https://www.googleapis.com/books/v1/volumes?q=isbn:",
   goodreadsIconUrl:
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Goodreads_logo_-_SuperTinyIcons.svg/800px-Goodreads_logo_-_SuperTinyIcons.svg.png",
+    "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/42/d8/cd/42d8cdbf-48df-d1b6-ade9-d972bac7f371/PolarisAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
 };
 
 const COLORS = {
@@ -142,7 +142,7 @@ class BookWidget {
       icon.cornerRadius = 8;
       icon.centerAlignImage();
       icon.imageSize = new Size(25, 25);
-      icon.url = "spotify://";
+      icon.url = "goodreads://";
       iconStack.centerAlignContent();
     }
   }
