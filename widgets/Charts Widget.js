@@ -53,7 +53,6 @@ const DATA_SOURCES = {
     urlScheme: "steam://",
     footerText: "Steam Activity",
     refreshHours: 1,
-    backgroundColor: "#1b2838",
   },
   imdb: {
     name: "IMDB",
@@ -101,11 +100,6 @@ class UniversalWidget {
 
   async createWidget(widgetSize) {
     const widget = new ListWidget();
-
-    // Set background color if specified
-    if (this.sourceConfig.backgroundColor) {
-      widget.backgroundColor = new Color(this.sourceConfig.backgroundColor);
-    }
 
     const refreshHours = this.sourceConfig.refreshHours || CONFIG.refreshHours;
     widget.refreshAfterDate = new Date(
@@ -460,10 +454,10 @@ class UniversalWidget {
     nameText.lineLimit = 1;
 
     hoursText.font = Font.systemFont(fontSizes[1]);
-    hoursText.textColor = new Color("#8f98a0"); // Steam gray
+    hoursText.textColor = CONFIG.colors.subtitle;
 
     lastPlayedText.font = Font.systemFont(fontSizes[1]);
-    lastPlayedText.textColor = new Color("#66c0f4"); // Steam blue
+    lastPlayedText.textColor = new Color("#66c0f4");
   }
 
   addImdbItem(column, item, widgetSize) {
@@ -727,11 +721,6 @@ class UniversalWidget {
 
   createErrorWidget(message) {
     const widget = new ListWidget();
-
-    // Set background color if specified
-    if (this.sourceConfig?.backgroundColor) {
-      widget.backgroundColor = new Color(this.sourceConfig.backgroundColor);
-    }
 
     const errorText = widget.addText(`⚠ ${message}`);
     errorText.font = Font.italicSystemFont(12);
