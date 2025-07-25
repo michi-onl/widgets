@@ -1,91 +1,42 @@
 # iOS Widgets for Scriptable
 
-A collection of custom widgets for the [Scriptable](https://scriptable.app/) app that bring dynamic content to your iOS home screen. These widgets are fully customizable and connect to external APIs to display real-time information.
+Customizable widgets for the [Scriptable](https://scriptable.app/) app that display data from various services on your iOS home screen.
 
 ![Screenshot of widgets on MacOS](images/desktop.png)
 
 ## Available Widgets
 
-### Stats.fm Month Widget
+**Stats.fm Widget** - Shows your top 3 tracks and albums from Spotify/Apple Music  
+**Movie & TV Widget** - Displays IMDB's most popular movies and TV shows  
+**Billboard 200 Widget** - Lists the top 6 albums from Billboard 200  
+**Steam Widget** - Shows your recent Steam gaming activity  
+**Currently Reading Widget** - Displays book information using ISBN lookup
 
-Displays your top three tracks and albums from Stats.fm, which aggregates data from Spotify and Apple Music.
+## Quick Setup
 
-**What it shows:**
+### 1. Install Scriptable
 
-- Top tracks and albums with cover art
-- Stream counts for each item
-- Direct link to the Stats.fm app
+Download [Scriptable](https://scriptable.app/) from the App Store (free)
 
-**Setup:** Enter your Spotify username in the `USER_ID` field within the `CONFIG` object.
+### 2. Add the Widget
 
-### Movie & TV Widget
+1. Copy the `.js` file you want into Scriptable
+2. Long press your home screen → **Edit**
+3. Tap **Add Widget** → Find **Scriptable** → Choose widget size
+4. Tap the new widget → Select your script
 
-Shows the top 3 movies and TV shows from IMDB’s most popular charts.
+### 3. Configure (Optional)
 
-**What it shows:**
+For personalized widgets, edit these values in the script:
 
-- Movie and TV show titles with release years
-- Star ratings with visual indicators
-- Clickable links that open in the IMDB app
-
-### Currently Reading Widget
-
-Displays information about a book you’re currently reading using its ISBN number.
-
-**What it shows:**
-
-- Book cover and metadata
-
-**Setup:** Configure the widget parameter with your book’s ISBN-10 number (see installation steps 6-8 below).
-
-### Billboard 200 Widget
-
-Shows the top 6 albums from the Billboard 200 album chart.
-
-**What it shows:**
-
-- Album rankings with position change indicators
-- Color-coded position tracking
-- Adapts to different widget sizes
-
-### Steam Recent Activity Widget
-
-Displays your recent Steam gaming activity.
-
-**What it shows:**
-
-- Recent games with cover images
-- Total playtime and last played dates
-- Adapts to different widget sizes
-
-## What You’ll Need
-
-- [Scriptable](https://scriptable.app/) app on your iOS device
-- Account credentials for relevant services (Spotify username for Stats.fm widget, Steam username for Steam widget)
-
-## How to Install
-
-### Adding to Scriptable:
-
-1. Copy the desired `.js` file from the `/files` folder into your Scriptable app
-
-### Adding to Your Home Screen:
-
-1. Long press any app on your home screen
-1. Tap “Edit Home Screen”
-1. Tap the “+” button at the top
-1. Scroll down and select “Scriptable”
-1. Choose your preferred widget size
-1. Tap the newly added widget
-1. Select the script you want to use
-1. Configure any required parameters
-
-**Note:** You can add multiple widgets to your home screen and configure each one individually.
-
-## Updates
-
-All widgets refresh automatically every 24 hours to ensure you’re seeing the latest information.
+- **Stats.fm**: Change `userId` to your Stats.fm user ID
+- **Steam**: Change `username` to your Steam username
+- **Currently Reading**: Add your book's ISBN-10 as widget parameter
 
 ## License
 
-These widgets are released under the Unlicense, meaning you’re free to use, modify, and distribute them as you wish.
+Released under the Unlicense - use and modify as needed.
+
+## Notes
+
+These widgets call external APIs and display the returned data, but can break at any time.
