@@ -745,7 +745,7 @@ class UniversalWidget {
 
       const mainStack = this.dataSource.buildContent(widget, data, widgetSize);
 
-      if (this.sourceConfig.logoUrl) {
+      if (this.sourceConfig.logoUrl && widgetSize != "small") {
         await this.addSourceIcon(mainStack);
       }
 
