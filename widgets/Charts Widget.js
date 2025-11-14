@@ -1,727 +1,1002 @@
 // Variables used by Scriptable.
 // These must be at the very top of the file. Do not edit.
-// icon-color: gray; icon-glyph: chart-bar;
+// icon-color: deep-blue; icon-glyph: chart-line;
 
-/*
-Universal Chart Widget
-Author: Michael Wagner, michi.onl
+/**
+ * Universal Data Widget
+ * Author: Michael Wagner, michi.onl
+ *
+ * A comprehensive Scriptable widget displaying data from multiple sources
+ * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia
+ *
+ * Configuration: Set widget parameter to source name (e.g., "billboard")
+ * or leave empty to use defaultSource from CONFIG
+ */
 
-GitHub: https://github.com/michi-onl/widgets
-
-This Scriptable widget can display charts from multiple data sources.
-Configure the source using widget parameters or the CONFIG object.
-*/
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 
 const CONFIG = {
-  defaultChartSource: "statsfm", // Default source if no parameter is provided
-  refreshHours: 24,
-  maxItems: 3,
-  widgetSizes: {
-    small: { name: [9, 8], spacer: 4 },
-    medium: { name: [12, 10], spacer: 8 },
-    large: { name: [14, 12], spacer: 8 },
+  // Default settings
+  defaultSource: "billboard",
+  apiBaseUrl: "https://api.michi.onl",
+  refreshInterval: 3600000, // 1 hour in milliseconds
+
+  // Widget sizing configuration
+  sizing: {
+    small: {
+      maxItems: 3,
+      fontSize: { primary: 11, secondary: 9, tertiary: 8 },
+      iconSize: 14,
+      spacing: 4,
+      padding: 12,
+    },
+    medium: {
+      maxItems: 6,
+      fontSize: { primary: 12, secondary: 10, tertiary: 9 },
+      iconSize: 16,
+      spacing: 6,
+      padding: 14,
+    },
+    large: {
+      maxItems: 10,
+      fontSize: { primary: 13, secondary: 11, tertiary: 10 },
+      iconSize: 18,
+      spacing: 8,
+      padding: 16,
+    },
   },
+
+  // Color scheme following iOS system design
   colors: {
-    subtitle: Color.gray(),
-    error: Color.red(),
-    new: Color.orange(),
-    up: Color.green(),
-    down: Color.red(),
-    same: Color.gray(),
-    star: Color.yellow(),
+    // Dynamic colors that adapt to light/dark mode
+    primary: Color.dynamic(new Color("#000000"), new Color("#FFFFFF")),
+    secondary: Color.dynamic(new Color("#8E8E93"), new Color("#8E8E93")),
+    tertiary: Color.dynamic(new Color("#C7C7CC"), new Color("#48484A")),
+
+    // Semantic colors
+    accent: new Color("#007AFF"),
+    success: new Color("#34C759"),
+    warning: new Color("#FF9500"),
+    error: new Color("#FF3B30"),
+
+    // Status indicators
+    new: new Color("#FF9500"),
+    up: new Color("#34C759"),
+    down: new Color("#FF3B30"),
+    unchanged: Color.dynamic(new Color("#8E8E93"), new Color("#636366")),
+
+    // Background colors
+    cardBackground: Color.dynamic(
+      new Color("#FFFFFF", 0.8),
+      new Color("#1C1C1E", 0.8)
+    ),
+
+    // Specialized colors
+    star: new Color("#FFD60A"),
+  },
+
+  // Source-specific configuration
+  sources: {
+    billboard: {
+      name: "Billboard 200",
+      endpoint: "/billboard-200",
+      icon: "chart.bar.fill",
+      refreshHours: 24,
+      urlScheme: "https://www.billboard.com/charts/billboard-200/",
+    },
+    imdb: {
+      name: "IMDb Popular",
+      endpoint: "/imdb",
+      icon: "tv.fill",
+      refreshHours: 12,
+      urlScheme: "imdb://",
+    },
+    steam: {
+      name: "Steam Games",
+      endpoint: "/steam-profiles",
+      icon: "gamecontroller.fill",
+      refreshHours: 6,
+      urlScheme: "steam://",
+      // Add your Steam profile names here
+      profiles: ["exampleuser1", "exampleuser2"],
+    },
+    hackernews: {
+      name: "Hacker News",
+      endpoint: "/hackernews",
+      icon: "newspaper.fill",
+      refreshHours: 1,
+      urlScheme: "https://news.ycombinator.com/",
+    },
+    github: {
+      name: "GitHub Releases",
+      endpoint: "/github-releases",
+      icon: "arrow.down.circle.fill",
+      refreshHours: 6,
+      urlScheme: "https://github.com/",
+      // Add repositories to track (format: "owner/repo")
+      repos: ["anthropics/anthropic-sdk-python", "fasthtml/fasthtml"],
+    },
+    wikipedia: {
+      name: "Wikipedia Edits",
+      endpoint: "/wikipedia-watchlist",
+      icon: "book.fill",
+      refreshHours: 2,
+      urlScheme: "https://wikipedia.org/",
+      // Configure Wikipedia watchlist credentials
+      username: "",
+      token: "", // Single token (or use tokenDe/tokenEn for language-specific)
+      languages: ["de", "en"],
+      limit: 10,
+    },
   },
 };
 
-const DATA_SOURCES = {
-  statsfm: {
-    name: "Stats.fm",
-    userId: "", // Change this to your Stats.fm user ID
-    apiBaseUrl: "https://api.stats.fm/api/v1",
-    logoUrl:
-      "https://cdn.brandfetch.io/idOZib4c5s/w/180/h/180/theme/dark/logo.png?c=1dxbfHSJFAPEGdCLU4o5B",
-    urlScheme: "statsfm://",
-    footerText: "© stats.fm",
-    refreshHours: 24,
-  },
-  steam: {
-    name: "Steam",
-    username: "", // Change this to your Steam username
-    apiEndpoint: "https://api.michi.onl/api/charts/steam/recent-activity",
-    logoUrl:
-      "https://cdn.brandfetch.io/idMpZmhn_O/w/400/h/400/theme/dark/icon.jpeg?c=1dxbfHSJFAPEGdCLU4o5B",
-    urlScheme: "steam://",
-    footerText: "Steam Activity",
-    refreshHours: 24,
-  },
-  imdb: {
-    name: "IMDB",
-    apiUrl: "https://api.michi.onl/api/charts/imdb/tv-movie",
-    footerText: "© IMDB",
-    refreshHours: 24,
-  },
-  billboard: {
-    name: "Billboard",
-    apiUrl: "https://api.michi.onl/api/charts/billboard/billboard-200",
-    footerText: "© Billboard",
-    refreshHours: 24,
-  },
-};
+// ============================================================================
+// UTILITY CLASSES
+// ============================================================================
+
+class APIClient {
+  constructor(baseUrl) {
+    this.baseUrl = baseUrl;
+  }
+
+  async fetch(endpoint, params = {}) {
+    const url = this.buildUrl(endpoint, params);
+    console.log(`Fetching: ${url}`);
+
+    const request = new Request(url);
+
+    try {
+      const response = await request.loadJSON();
+      console.log(`Success: ${endpoint}`);
+      return response;
+    } catch (error) {
+      console.error(`API Error for ${endpoint}: ${error.message}`);
+      console.error(`URL was: ${url}`);
+      throw new Error(`Failed to fetch from ${endpoint}: ${error.message}`);
+    }
+  }
+
+  buildUrl(endpoint, params) {
+    let url = this.baseUrl + endpoint;
+
+    const queryParams = Object.entries(params)
+      .filter(([key, value]) => value !== null && value !== undefined)
+      .map(
+        ([key, value]) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+      )
+      .join("&");
+
+    if (queryParams) {
+      url += "?" + queryParams;
+    }
+
+    return url;
+  }
+}
+
+class ImageCache {
+  static cache = {};
+
+  static async load(url) {
+    if (!url) return null;
+
+    if (this.cache[url]) {
+      return this.cache[url];
+    }
+
+    try {
+      const request = new Request(url);
+      const image = await request.loadImage();
+      this.cache[url] = image;
+      return image;
+    } catch (error) {
+      console.error(`Failed to load image: ${url}`);
+      return null;
+    }
+  }
+}
+
+class FormatUtils {
+  static truncate(text, maxLength) {
+    if (!text) return "";
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength - 1) + "…";
+  }
+
+  static formatNumber(num) {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toString();
+  }
+
+  static formatTimeAgo(dateString) {
+    if (!dateString) return "Unknown";
+
+    let date;
+    // Handle Unix timestamp (number)
+    if (typeof dateString === "number") {
+      date = new Date(dateString);
+    } else {
+      date = new Date(dateString);
+    }
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) return "Unknown";
+
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 0) return "Just now";
+
+    const intervals = {
+      year: 31536000,
+      month: 2592000,
+      week: 604800,
+      day: 86400,
+      hour: 3600,
+      minute: 60,
+    };
+
+    for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+      const interval = Math.floor(seconds / secondsInUnit);
+      if (interval >= 1) {
+        return `${interval}${unit.charAt(0)} ago`;
+      }
+    }
+
+    return "Just now";
+  }
+
+  static formatDuration(hours) {
+    if (hours < 1) {
+      return `${Math.round(hours * 60)}m`;
+    }
+    return `${hours.toFixed(1)}h`;
+  }
+
+  static cleanTitle(title) {
+    if (!title) return "";
+    return title
+      .replace(/\[feat\. .*?\]/gi, "")
+      .replace(/\(.*?\)/gi, "")
+      .trim();
+  }
+}
+
+// ============================================================================
+// DATA SOURCE IMPLEMENTATIONS
+// ============================================================================
 
 class DataSource {
-  constructor(config) {
+  constructor(config, apiClient) {
     this.config = config;
+    this.api = apiClient;
   }
 
   async fetchData(widgetSize) {
     throw new Error("fetchData must be implemented by subclass");
   }
 
-  buildContent(widget, data, widgetSize) {
-    throw new Error("buildContent must be implemented by subclass");
-  }
-
-  isEmpty(data) {
-    throw new Error("isEmpty must be implemented by subclass");
+  renderWidget(widget, data, widgetSize) {
+    throw new Error("renderWidget must be implemented by subclass");
   }
 }
 
-// Stats.fm data source
-class StatsfmDataSource extends DataSource {
+class BillboardDataSource extends DataSource {
   async fetchData(widgetSize) {
-    const dataPromises = { track: this.fetchChartData("track") };
+    const response = await this.api.fetch(this.config.endpoint);
 
-    if (widgetSize !== "small") {
-      dataPromises.album = this.fetchChartData("album");
+    if (!response.music?.data) {
+      throw new Error("Invalid Billboard data structure");
     }
 
-    const resolvedData = await Promise.allSettled(Object.values(dataPromises));
-    const data = {};
-
-    if (resolvedData[0].status === "fulfilled" && resolvedData[0].value) {
-      data.track = await this.preloadImages(resolvedData[0].value);
-    }
-
-    if (resolvedData[1]?.status === "fulfilled" && resolvedData[1].value) {
-      data.album = await this.preloadImages(resolvedData[1].value);
-    }
-
-    return data;
-  }
-
-  async fetchChartData(type) {
-    const url = `${this.config.apiBaseUrl}/users/${this.config.userId}/top/${type}s?range=weeks`;
-
-    try {
-      const request = new Request(url);
-      const response = await request.loadJSON();
-
-      if (!response?.items || !Array.isArray(response.items)) {
-        console.warn(`Invalid response structure for ${type} data`);
-        return null;
-      }
-
-      return response.items
-        .slice(0, CONFIG.maxItems)
-        .map((item, index) => this.formatItem(item, type, index));
-    } catch (error) {
-      console.error(`Error fetching ${type} data:`, error);
-      return null;
-    }
-  }
-
-  formatItem(item, type, index) {
-    const itemData = item[type];
+    const limit = CONFIG.sizing[widgetSize].maxItems;
     return {
-      imgSrc: this.getImageUrl(itemData, type),
-      name: itemData?.name || `Unknown ${type} ${index + 1}`,
-      sub: `${this.formatNumber(item.streams || 0)} Streams`,
+      title: response.music.data_title || "Billboard 200",
+      subtitle: response.music.data_desc || "",
+      items: response.music.data.slice(0, limit).map((item, index) => ({
+        position: index + 1,
+        title: FormatUtils.cleanTitle(item.title),
+        subtitle: item.artist,
+        metadata: {
+          before: item.before,
+          peak: item.peak,
+          weeks: item.weeks,
+        },
+      })),
     };
   }
 
-  getImageUrl(itemData, type) {
-    if (!itemData) return null;
-    if (itemData.image) return itemData.image;
-    if (type === "track" && itemData.albums?.[0]?.image) {
-      return itemData.albums[0].image;
-    }
-    return null;
-  }
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
 
-  async preloadImages(items) {
-    if (!items || !Array.isArray(items)) return null;
+    // Header
+    this.addHeader(widget, data.title, sizes);
 
-    const imagePromises = items.map(async (item) => {
-      if (item.imgSrc) {
-        try {
-          item.img = await this.loadImage(item.imgSrc);
-        } catch (error) {
-          console.warn(`Failed to load image for ${item.name}:`, error);
-          item.img = null;
-        }
-      }
-      return item;
-    });
+    widget.addSpacer(sizes.spacing);
 
-    return await Promise.all(imagePromises);
-  }
+    // Content
+    const columns = this.getColumnLayout(widgetSize);
+    const itemsPerColumn = Math.ceil(data.items.length / columns);
 
-  async loadImage(url) {
-    if (!url) return null;
-    try {
-      const request = new Request(url);
-      return await request.loadImage();
-    } catch (error) {
-      console.error(`Error loading image from ${url}:`, error);
-      return null;
-    }
-  }
+    const contentStack = widget.addStack();
+    contentStack.layoutHorizontally();
 
-  formatNumber(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toString();
-  }
+    for (let col = 0; col < columns; col++) {
+      if (col > 0) contentStack.addSpacer(sizes.spacing * 2);
 
-  buildContent(widget, data, widgetSize) {
-    const mainStack = widget.addStack();
-    mainStack.layoutHorizontally();
+      const columnStack = contentStack.addStack();
+      columnStack.layoutVertically();
 
-    const contentTypes = ["track", "album"];
-    const columnTitles = { track: "Songs", album: "Albums" };
-    let addedColumns = 0;
+      const start = col * itemsPerColumn;
+      const end = Math.min(start + itemsPerColumn, data.items.length);
 
-    for (const type of contentTypes) {
-      if (data[type]?.length > 0) {
-        if (addedColumns > 0) {
-          mainStack.addSpacer(CONFIG.widgetSizes[widgetSize].spacer);
-        }
-
-        const column = mainStack.addStack();
-        column.layoutVertically();
-
-        this.addColumnTitle(column, columnTitles[type]);
-
-        for (const item of data[type]) {
-          this.addItem(column, item, widgetSize);
-        }
-
-        addedColumns++;
+      for (let i = start; i < end; i++) {
+        this.renderItem(columnStack, data.items[i], sizes);
+        if (i < end - 1) columnStack.addSpacer(sizes.spacing);
       }
     }
-
-    mainStack.addSpacer();
-    return mainStack;
   }
 
-  addColumnTitle(column, title) {
-    const titleText = column.addText(title);
-    titleText.font = Font.boldSystemFont(11);
-    titleText.textColor = CONFIG.colors.subtitle;
-    titleText.leftAlignText();
-    column.addSpacer(4);
-  }
-
-  addItem(column, item, widgetSize) {
-    const itemStack = column.addStack();
+  renderItem(stack, item, sizes) {
+    const itemStack = stack.addStack();
     itemStack.layoutHorizontally();
-    itemStack.setPadding(4, 0, 4, 0);
+    itemStack.centerAlignContent();
 
-    if (item.img) {
-      this.addItemImage(itemStack, item.img);
-      itemStack.addSpacer(8);
-    }
+    // Position indicator
+    const positionStack = itemStack.addStack();
+    positionStack.layoutVertically();
+    positionStack.centerAlignContent();
 
-    this.addItemText(itemStack, item, widgetSize);
-  }
+    this.addPositionIndicator(positionStack, item, sizes);
 
-  addItemImage(stack, image) {
-    const imageStack = stack.addStack();
-    const imageElement = imageStack.addImage(image);
-    imageElement.cornerRadius = 8;
-    imageStack.centerAlignContent();
-  }
+    itemStack.addSpacer(sizes.spacing);
 
-  addItemText(stack, item, widgetSize) {
-    const textStack = stack.addStack();
+    // Text content
+    const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const cleanedName = this.cleanTitle(item.name);
-    const nameText = textStack.addText(cleanedName);
-    const subText = textStack.addText(item.sub);
+    const titleText = textStack.addText(FormatUtils.truncate(item.title, 35));
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
 
-    const fontSizes = CONFIG.widgetSizes[widgetSize].name;
-    nameText.font = Font.systemFont(fontSizes[0]);
-    subText.font = Font.systemFont(fontSizes[1]);
-    subText.textColor = CONFIG.colors.subtitle;
-  }
-
-  cleanTitle(title) {
-    if (!title || typeof title !== "string") return "";
-    return title
-      .replace(/$feat\. .*?$/gi, "")
-      .replace(/$.*?$/gi, "")
-      .trim();
-  }
-
-  isEmpty(data) {
-    return !data || (!data.track && !data.album);
-  }
-}
-
-// Steam data source
-class SteamDataSource extends DataSource {
-  async fetchData() {
-    try {
-      const url = `${this.config.apiEndpoint}?profiles=${this.config.username}`;
-      const request = new Request(url);
-      const response = await request.loadJSON();
-
-      const userData = response[this.config.username];
-      if (!userData) throw new Error("User data not found");
-
-      const recentGames = userData.recentGames.map((game) => ({
-        name: game.name,
-        hoursPlayed: game.hoursPlayed,
-        hoursPlayedNumeric: game.hoursPlayedNumeric,
-        lastPlayedShort: game.lastPlayedShort,
-        imgSrc: game.iconUrl,
-        appId: game.appId,
-      }));
-
-      const gamesWithImages = await this.preloadImages(recentGames);
-
-      return {
-        profileName: userData.profileName,
-        totalGames: userData.totalGames,
-        recentGames: gamesWithImages,
-      };
-    } catch (error) {
-      console.error("Error fetching Steam data:", error);
-      throw error;
-    }
-  }
-
-  async preloadImages(items) {
-    if (!items || !Array.isArray(items)) return null;
-
-    const imagePromises = items.map(async (item) => {
-      if (item.imgSrc) {
-        try {
-          item.img = await this.loadImage(item.imgSrc);
-        } catch (error) {
-          console.warn(`Failed to load image for ${item.name}:`, error);
-          item.img = null;
-        }
-      }
-      return item;
-    });
-
-    return await Promise.all(imagePromises);
-  }
-
-  async loadImage(url) {
-    if (!url) return null;
-    try {
-      const request = new Request(url);
-      return await request.loadImage();
-    } catch (error) {
-      console.error(`Error loading image from ${url}:`, error);
-      return null;
-    }
-  }
-
-  buildContent(widget, data, widgetSize) {
-    const mainStack = widget.addStack();
-    mainStack.layoutHorizontally();
-
-    const gamesColumn = mainStack.addStack();
-    gamesColumn.layoutVertically();
-
-    const titleText = gamesColumn.addText("Recent Games");
-    titleText.font = Font.boldSystemFont(11);
-    titleText.textColor = CONFIG.colors.subtitle;
-    titleText.leftAlignText();
-
-    gamesColumn.addSpacer(4);
-
-    for (let i = 0; i < data.recentGames.length; i++) {
-      const game = data.recentGames[i];
-      this.addGame(gamesColumn, game, widgetSize);
-
-      if (i < data.recentGames.length - 1) {
-        gamesColumn.addSpacer(2);
-      }
-    }
-
-    mainStack.addSpacer();
-    return mainStack;
-  }
-
-  addGame(column, game, widgetSize) {
-    const gameStack = column.addStack();
-    gameStack.layoutHorizontally();
-    gameStack.setPadding(4, 0, 4, 0);
-
-    if (game.img) {
-      this.addItemImage(gameStack, game.img);
-      gameStack.addSpacer(8);
-    }
-
-    this.addGameText(gameStack, game, widgetSize);
-  }
-
-  addItemImage(stack, image) {
-    const imageStack = stack.addStack();
-    const imageElement = imageStack.addImage(image);
-    imageElement.cornerRadius = 8;
-    imageStack.centerAlignContent();
-  }
-
-  addGameText(stack, game, widgetSize) {
-    const textStack = stack.addStack();
-    textStack.layoutVertically();
-
-    const cleanedName = this.cleanTitle(game.name);
-    const nameText = textStack.addText(cleanedName);
-
-    const detailsStack = textStack.addStack();
-    detailsStack.layoutHorizontally();
-
-    const hoursText = detailsStack.addText(
-      this.formatHours(game.hoursPlayedNumeric)
+    const subtitleText = textStack.addText(
+      FormatUtils.truncate(item.subtitle, 30)
     );
-    detailsStack.addSpacer(8);
-    const lastPlayedText = detailsStack.addText(game.lastPlayedShort);
+    subtitleText.font = Font.systemFont(sizes.fontSize.secondary);
+    subtitleText.textColor = CONFIG.colors.secondary;
+    subtitleText.lineLimit = 1;
 
-    const fontSizes = CONFIG.widgetSizes[widgetSize].name;
-    nameText.font = Font.systemFont(fontSizes[0]);
-    nameText.lineLimit = 1;
-
-    hoursText.font = Font.systemFont(fontSizes[1]);
-    hoursText.textColor = CONFIG.colors.subtitle;
-
-    lastPlayedText.font = Font.systemFont(fontSizes[1]);
-    lastPlayedText.textColor = new Color("#66c0f4");
-  }
-
-  cleanTitle(title) {
-    if (!title || typeof title !== "string") return "";
-    return title
-      .replace(/$feat\. .*?$/gi, "")
-      .replace(/$.*?$/gi, "")
-      .trim();
-  }
-
-  formatHours(hours) {
-    if (hours >= 1000) return `${(hours / 1000).toFixed(1)}K hrs`;
-    if (hours >= 100) return `${hours.toFixed(0)} hrs`;
-    if (hours >= 10) return `${hours.toFixed(1)} hrs`;
-    return `${hours.toFixed(1)} hrs`;
-  }
-
-  isEmpty(data) {
-    return !data || !data.recentGames || data.recentGames.length === 0;
-  }
-}
-
-// IMDB data source
-class ImdbDataSource extends DataSource {
-  async fetchData() {
-    try {
-      const request = new Request(this.config.apiUrl);
-      const response = await request.loadJSON();
-
-      return {
-        movies: response.movies?.data?.slice(0, 3) || [],
-        tvShows: response.tv_shows?.data?.slice(0, 3) || [],
-      };
-    } catch (error) {
-      console.error("API fetch error:", error);
-      return null;
-    }
-  }
-
-  buildContent(widget, data, widgetSize) {
-    const body = widget.addStack();
-    body.layoutHorizontally();
-
-    if (data.movies.length > 0) {
-      const moviesColumn = body.addStack();
-      moviesColumn.layoutVertically();
-      this.addColumnTitle(moviesColumn, "Movies");
-      data.movies.forEach((movie) =>
-        this.addItem(moviesColumn, movie, widgetSize)
-      );
+    if (item.metadata.weeks) {
+      const metaText = textStack.addText(`${item.metadata.weeks} weeks`);
+      metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+      metaText.textColor = CONFIG.colors.tertiary;
     }
 
-    if (data.tvShows.length > 0 && widgetSize !== "small") {
-      body.addSpacer(10);
-      const tvColumn = body.addStack();
-      tvColumn.layoutVertically();
-      this.addColumnTitle(tvColumn, "Shows");
-      data.tvShows.forEach((show) => this.addItem(tvColumn, show, widgetSize));
-    }
-
-    return body;
+    itemStack.addSpacer();
   }
 
-  addColumnTitle(column, title) {
-    const chartTitle = column.addText(title);
-    chartTitle.font = Font.boldSystemFont(11);
-    chartTitle.textColor = CONFIG.colors.subtitle;
-    column.addSpacer(2);
-  }
-
-  addItem(column, item, widgetSize) {
-    const stack = column.addStack();
-    stack.layoutHorizontally();
-    stack.setPadding(4, 0, 4, 0);
-    stack.centerAlignContent();
-
-    if (item.href && item.href !== "N/A") {
-      stack.url = `imdb://m.imdb.com${item.href}`;
-    }
-
-    const textContainer = stack.addStack();
-    const textStack = textContainer.addStack();
-    textStack.layoutVertically();
-    textContainer.addSpacer();
-
-    const titleText = textStack.addText(item.title || "Unknown Title");
-    titleText.font = Font.systemFont(CONFIG.widgetSizes[widgetSize].name[0]);
-
-    const subtitleParts = [
-      item.year || "Unknown Year",
-      item.length || "N/A",
-      item.age || "N/A",
-    ].filter((part) => part !== "N/A");
-
-    const subtitleText = textStack.addText(subtitleParts.join(", "));
-    subtitleText.font = Font.systemFont(CONFIG.widgetSizes[widgetSize].name[1]);
-    subtitleText.textColor = CONFIG.colors.subtitle;
-
-    stack.addSpacer();
-
-    if (item.rating && item.rating !== "N/A") {
-      this.addRatingSection(stack, item.rating, widgetSize);
-    }
-  }
-
-  addRatingSection(stack, rating, widgetSize) {
-    const ratingStack = stack.addStack();
-    ratingStack.centerAlignContent();
-
-    const star = ratingStack.addImage(SFSymbol.named("star.fill").image);
-    star.tintColor = CONFIG.colors.star;
-    star.imageSize = new Size(
-      CONFIG.widgetSizes[widgetSize].name[0],
-      CONFIG.widgetSizes[widgetSize].name[0]
-    );
-
-    ratingStack.addSpacer(2);
-
-    const ratingText = ratingStack.addText(rating);
-    ratingText.font = Font.boldSystemFont(
-      CONFIG.widgetSizes[widgetSize].name[0]
-    );
-  }
-
-  isEmpty(data) {
-    return (
-      !data ||
-      ((!data.movies || data.movies.length === 0) &&
-        (!data.tvShows || data.tvShows.length === 0))
-    );
-  }
-}
-
-// Billboard data source
-class BillboardDataSource extends DataSource {
-  async fetchData() {
-    try {
-      const request = new Request(this.config.apiUrl);
-      request.timeoutInterval = 10;
-      const response = await request.loadJSON();
-
-      return {
-        albums: response.music?.data || response.data || response.albums || [],
-      };
-    } catch (error) {
-      console.error("API fetch error:", error);
-      return null;
-    }
-  }
-
-  buildContent(widget, data, widgetSize) {
-    const body = widget.addStack();
-    body.layoutVertically();
-
-    const chartTitle = body.addText("Albums");
-    chartTitle.font = Font.boldSystemFont(11);
-    chartTitle.textColor = CONFIG.colors.subtitle;
-    body.addSpacer(2);
-
-    const container = body.addStack();
-    container.layoutHorizontally();
-
-    if (data.albums.length > 0) {
-      const firstColumn = container.addStack();
-      firstColumn.layoutVertically();
-
-      const firstThreeAlbums = data.albums.slice(0, 3);
-      firstThreeAlbums.forEach((album, index) =>
-        this.addItem(firstColumn, album, index, widgetSize)
-      );
-    }
-
-    if (data.albums.length > 3 && widgetSize !== "small") {
-      container.addSpacer(10);
-      const secondColumn = container.addStack();
-      secondColumn.layoutVertically();
-
-      const nextThreeAlbums = data.albums.slice(3, 6);
-      nextThreeAlbums.forEach((album, index) =>
-        this.addItem(secondColumn, album, index + 3, widgetSize)
-      );
-    }
-
-    return body;
-  }
-
-  addItem(column, item, currentIndex, widgetSize) {
-    const stack = column.addStack();
-    stack.layoutHorizontally();
-    stack.setPadding(4, 0, 4, 0);
-    stack.centerAlignContent();
-
-    const textContainer = stack.addStack();
-    const textStack = textContainer.addStack();
-    textStack.layoutVertically();
-    textContainer.addSpacer();
-
-    const titleRow = textStack.addStack();
-    titleRow.layoutHorizontally();
-    titleRow.centerAlignContent();
-
-    const iconSymbol = item.peak === 1 ? "star" : "circle.dotted";
-    const iconColor = CONFIG.colors.subtitle;
-
-    const titleIcon = titleRow.addImage(SFSymbol.named(iconSymbol).image);
-    titleIcon.tintColor = iconColor;
-    titleIcon.imageSize = new Size(
-      CONFIG.widgetSizes[widgetSize].name[0],
-      CONFIG.widgetSizes[widgetSize].name[0]
-    );
-
-    titleRow.addSpacer(4);
-
-    const titleText = titleRow.addText(
-      item.title || item.name || "Unknown Title"
-    );
-    titleText.font = Font.systemFont(CONFIG.widgetSizes[widgetSize].name[0]);
-
-    const subtitleParts = [
-      item.artist || "Unknown Artist",
-      item.weeks ? `${item.weeks} wks` : null,
-    ].filter((part) => part !== null);
-
-    const subtitleText = textStack.addText(subtitleParts.join(" • "));
-    subtitleText.font = Font.systemFont(CONFIG.widgetSizes[widgetSize].name[1]);
-    subtitleText.textColor = CONFIG.colors.subtitle;
-
-    stack.addSpacer();
-
-    if (item.before !== undefined) {
-      this.addPositionChangeSection(
-        stack,
-        item.before,
-        currentIndex,
-        widgetSize
-      );
-    }
-  }
-
-  addPositionChangeSection(stack, beforePosition, currentIndex, widgetSize) {
-    const changeStack = stack.addStack();
-    changeStack.centerAlignContent();
+  addPositionIndicator(stack, item, sizes) {
+    const before = item.metadata.before;
+    const current = item.position;
 
     let symbol, color;
 
-    if (beforePosition === 0) {
-      symbol = "plus.circle";
+    if (before === 0) {
+      symbol = "star.circle.fill";
       color = CONFIG.colors.new;
+    } else if (current < before) {
+      symbol = "arrow.up.circle.fill";
+      color = CONFIG.colors.up;
+    } else if (current > before) {
+      symbol = "arrow.down.circle.fill";
+      color = CONFIG.colors.down;
     } else {
-      const currentPosition = currentIndex + 1;
-      if (currentPosition < beforePosition) {
-        symbol = "arrow.up.circle";
-        color = CONFIG.colors.up;
-      } else if (currentPosition > beforePosition) {
-        symbol = "arrow.down.circle";
-        color = CONFIG.colors.down;
-      } else {
-        symbol = "minus.circle";
-        color = CONFIG.colors.same;
+      symbol = "minus.circle.fill";
+      color = CONFIG.colors.unchanged;
+    }
+
+    const icon = stack.addImage(SFSymbol.named(symbol).image);
+    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    icon.tintColor = color;
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    headerStack.layoutHorizontally();
+    headerStack.centerAlignContent();
+
+    const iconImage = SFSymbol.named(this.config.icon).image;
+    const icon = headerStack.addImage(iconImage);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+
+  getColumnLayout(widgetSize) {
+    return widgetSize === "small" ? 1 : widgetSize === "medium" ? 2 : 2;
+  }
+}
+
+class IMDbDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const response = await this.api.fetch(this.config.endpoint);
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+
+    // Handle the actual API response structure
+    const movies = Array.isArray(response.movies)
+      ? response.movies.slice(0, Math.ceil(limit / 2))
+      : [];
+    const tvShows = Array.isArray(response.tv_shows)
+      ? response.tv_shows.slice(0, Math.ceil(limit / 2))
+      : [];
+
+    return {
+      movies: movies.map((m) => this.formatItem(m, "movie")),
+      tvShows: tvShows.map((t) => this.formatItem(t, "tv")),
+    };
+  }
+
+  formatItem(item, type) {
+    return {
+      title: FormatUtils.truncate(item.title, 30),
+      subtitle: `${item.year || "N/A"} • ${item.length || ""}`,
+      rating: item.rating,
+      type: type,
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Popular on IMDb", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutHorizontally();
+
+    // Movies column
+    if (data.movies.length > 0) {
+      const moviesStack = contentStack.addStack();
+      moviesStack.layoutVertically();
+
+      this.addSectionHeader(moviesStack, "Movies", sizes);
+      data.movies.forEach((item) => {
+        this.renderItem(moviesStack, item, sizes);
+        moviesStack.addSpacer(sizes.spacing / 2);
+      });
+    }
+
+    if (widgetSize !== "small" && data.tvShows.length > 0) {
+      contentStack.addSpacer(sizes.spacing * 2);
+
+      // TV Shows column
+      const tvStack = contentStack.addStack();
+      tvStack.layoutVertically();
+
+      this.addSectionHeader(tvStack, "TV Shows", sizes);
+      data.tvShows.forEach((item) => {
+        this.renderItem(tvStack, item, sizes);
+        tvStack.addSpacer(sizes.spacing / 2);
+      });
+    }
+  }
+
+  renderItem(stack, item, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
+
+    // Rating badge
+    if (item.rating) {
+      const ratingStack = itemStack.addStack();
+      ratingStack.backgroundColor = CONFIG.colors.accent;
+      ratingStack.cornerRadius = 4;
+      ratingStack.setPadding(2, 4, 2, 4);
+
+      const ratingText = ratingStack.addText(item.rating.toString());
+      ratingText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+      ratingText.textColor = Color.white();
+
+      itemStack.addSpacer(sizes.spacing);
+    }
+
+    // Text content
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(item.title);
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.secondary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    const subtitleText = textStack.addText(item.subtitle);
+    subtitleText.font = Font.systemFont(sizes.fontSize.tertiary);
+    subtitleText.textColor = CONFIG.colors.secondary;
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    headerStack.layoutHorizontally();
+
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+
+  addSectionHeader(stack, title, sizes) {
+    const headerText = stack.addText(title);
+    headerText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
+    headerText.textColor = CONFIG.colors.secondary;
+    stack.addSpacer(sizes.spacing / 2);
+  }
+}
+
+class SteamDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const profiles = this.config.profiles.join(",");
+    const response = await this.api.fetch(this.config.endpoint, { profiles });
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+    const allGames = [];
+
+    for (const [username, userData] of Object.entries(response)) {
+      if (userData.recentGames) {
+        userData.recentGames.forEach((game) => {
+          allGames.push({
+            name: game.name,
+            hoursPlayed: game.hoursPlayedNumeric || 0,
+            username: username,
+          });
+        });
       }
     }
 
-    const changeIcon = changeStack.addImage(SFSymbol.named(symbol).image);
-    changeIcon.tintColor = color;
-    changeIcon.imageSize = new Size(
-      CONFIG.widgetSizes[widgetSize].name[0],
-      CONFIG.widgetSizes[widgetSize].name[0]
+    // Sort by play time and take top items
+    allGames.sort((a, b) => b.hoursPlayed - a.hoursPlayed);
+
+    return {
+      games: allGames.slice(0, limit),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Recently Played", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    data.games.forEach((game, index) => {
+      this.renderItem(contentStack, game, sizes);
+      if (index < data.games.length - 1) {
+        contentStack.addSpacer(sizes.spacing);
+      }
+    });
+  }
+
+  renderItem(stack, game, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
+
+    const icon = itemStack.addImage(
+      SFSymbol.named("gamecontroller.fill").image
     );
+    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    icon.tintColor = CONFIG.colors.secondary;
+
+    itemStack.addSpacer(sizes.spacing);
+
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(FormatUtils.truncate(game.name, 35));
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    const metaText = textStack.addText(
+      `${FormatUtils.formatDuration(game.hoursPlayed)} • ${game.username}`
+    );
+    metaText.font = Font.systemFont(sizes.fontSize.secondary);
+    metaText.textColor = CONFIG.colors.secondary;
+
+    itemStack.addSpacer();
   }
 
-  isEmpty(data) {
-    return !data || !data.albums || data.albums.length === 0;
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
   }
 }
 
-// Data source factory
+class HackerNewsDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const response = await this.api.fetch(this.config.endpoint);
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+
+    return {
+      stories: response.stories.slice(0, limit).map((story) => ({
+        title: FormatUtils.truncate(story.title, 50),
+        points: story.points,
+        comments: story.descendants,
+        author: story.by,
+        timeAgo: FormatUtils.formatTimeAgo(story.time * 1000), // Unix timestamp to milliseconds
+        url: story.url,
+      })),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Hacker News", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    // For medium widgets, use columns to fit more items
+    if (widgetSize === "medium" && data.stories.length > 3) {
+      const contentStack = widget.addStack();
+      contentStack.layoutHorizontally();
+
+      const itemsPerColumn = Math.ceil(data.stories.length / 2);
+
+      // First column
+      const firstColumn = contentStack.addStack();
+      firstColumn.layoutVertically();
+
+      for (let i = 0; i < itemsPerColumn && i < data.stories.length; i++) {
+        this.renderItem(firstColumn, data.stories[i], sizes);
+        if (i < itemsPerColumn - 1 && i < data.stories.length - 1) {
+          firstColumn.addSpacer(sizes.spacing);
+        }
+      }
+
+      contentStack.addSpacer(sizes.spacing * 2);
+
+      // Second column
+      const secondColumn = contentStack.addStack();
+      secondColumn.layoutVertically();
+
+      for (let i = itemsPerColumn; i < data.stories.length; i++) {
+        this.renderItem(secondColumn, data.stories[i], sizes);
+        if (i < data.stories.length - 1) {
+          secondColumn.addSpacer(sizes.spacing);
+        }
+      }
+    } else {
+      // Small or large widget - single column
+      const contentStack = widget.addStack();
+      contentStack.layoutVertically();
+
+      data.stories.forEach((story, index) => {
+        this.renderItem(contentStack, story, sizes);
+        if (index < data.stories.length - 1) {
+          contentStack.addSpacer(sizes.spacing);
+        }
+      });
+    }
+  }
+
+  renderItem(stack, story, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutVertically();
+
+    const titleText = itemStack.addText(story.title);
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 2;
+
+    const metaStack = itemStack.addStack();
+    metaStack.layoutHorizontally();
+
+    // More compact metadata format
+    const metaText = metaStack.addText(
+      `${story.points}pts • ${story.comments}cmt`
+    );
+    metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+    metaText.textColor = CONFIG.colors.secondary;
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+}
+
+class GitHubDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const repos = this.config.repos.join(",");
+    const response = await this.api.fetch(this.config.endpoint, { repos });
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+    const allReleases = [];
+
+    // Safely handle response
+    if (!response || !response.repositories) {
+      return { releases: [] };
+    }
+
+    for (const [repo, repoData] of Object.entries(response.repositories)) {
+      if (repoData && Array.isArray(repoData.releases)) {
+        repoData.releases.forEach((release) => {
+          allReleases.push({
+            repo: repo,
+            name: release.name || release.tag_name,
+            tagName: release.tag_name,
+            publishedAt: release.published_at,
+            author: release.author?.login || "Unknown",
+            isPrerelease: release.prerelease,
+            url: release.html_url,
+          });
+        });
+      }
+    }
+
+    allReleases.sort(
+      (a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)
+    );
+
+    return {
+      releases: allReleases.slice(0, limit),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Recent Releases", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    data.releases.forEach((release, index) => {
+      this.renderItem(contentStack, release, sizes);
+      if (index < data.releases.length - 1) {
+        contentStack.addSpacer(sizes.spacing);
+      }
+    });
+  }
+
+  renderItem(stack, release, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutVertically();
+
+    const headerStack = itemStack.addStack();
+    headerStack.layoutHorizontally();
+
+    const repoText = headerStack.addText(release.repo);
+    repoText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
+    repoText.textColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(4);
+
+    const tagText = headerStack.addText(release.tagName);
+    tagText.font = Font.monospacedSystemFont(sizes.fontSize.tertiary);
+    tagText.textColor = CONFIG.colors.secondary;
+
+    if (release.isPrerelease) {
+      headerStack.addSpacer(4);
+      const preText = headerStack.addText("pre");
+      preText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+      preText.textColor = CONFIG.colors.warning;
+    }
+
+    const metaText = itemStack.addText(
+      `${release.author} • ${FormatUtils.formatTimeAgo(release.publishedAt)}`
+    );
+    metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+    metaText.textColor = CONFIG.colors.secondary;
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+}
+
+class WikipediaDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    // Handle token configuration - support both single token and language-specific tokens
+    const token =
+      this.config.token || this.config.tokenDe || this.config.tokenEn;
+
+    if (!token) {
+      throw new Error("Wikipedia token not configured");
+    }
+
+    const params = {
+      username: this.config.username,
+      token: token,
+      languages: this.config.languages.join(","),
+      limit: CONFIG.sizing[widgetSize].maxItems,
+    };
+
+    const response = await this.api.fetch(this.config.endpoint, params);
+
+    // Safely handle response
+    if (!response || !Array.isArray(response.edits)) {
+      return { edits: [] };
+    }
+
+    return {
+      edits: response.edits.map((edit) => ({
+        title: FormatUtils.truncate(edit.title, 40),
+        language: edit.languageName || edit.language,
+        user: edit.user,
+        timeAgo: edit.timeAgo,
+        comment: FormatUtils.truncate(edit.comment, 60),
+        url: edit.url,
+      })),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Recent Edits", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    data.edits.forEach((edit, index) => {
+      this.renderItem(contentStack, edit, sizes);
+      if (index < data.edits.length - 1) {
+        contentStack.addSpacer(sizes.spacing);
+      }
+    });
+  }
+
+  renderItem(stack, edit, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutVertically();
+
+    const headerStack = itemStack.addStack();
+    headerStack.layoutHorizontally();
+
+    const langBadge = headerStack.addStack();
+    langBadge.backgroundColor = CONFIG.colors.accent;
+    langBadge.cornerRadius = 3;
+    langBadge.setPadding(2, 4, 2, 4);
+
+    const langText = langBadge.addText(edit.language);
+    langText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+    langText.textColor = Color.white();
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(edit.title);
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    if (edit.comment && edit.comment !== "N/A") {
+      const commentText = itemStack.addText(edit.comment);
+      commentText.font = Font.systemFont(sizes.fontSize.secondary);
+      commentText.textColor = CONFIG.colors.secondary;
+      commentText.lineLimit = 1;
+    }
+
+    const metaText = itemStack.addText(`${edit.user} • ${edit.timeAgo}`);
+    metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+    metaText.textColor = CONFIG.colors.tertiary;
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+}
+
+// ============================================================================
+// DATA SOURCE FACTORY
+// ============================================================================
+
 class DataSourceFactory {
-  static create(chartSource) {
-    const config = DATA_SOURCES[chartSource];
+  static create(sourceName, apiClient) {
+    const config = CONFIG.sources[sourceName];
+
     if (!config) {
-      throw new Error(`Unknown chart source: ${chartSource}`);
+      throw new Error(`Unknown source: ${sourceName}`);
     }
 
-    switch (chartSource) {
-      case "statsfm":
-        return new StatsfmDataSource(config);
-      case "steam":
-        return new SteamDataSource(config);
-      case "imdb":
-        return new ImdbDataSource(config);
-      case "billboard":
-        return new BillboardDataSource(config);
-      default:
-        throw new Error(`Unsupported chart source: ${chartSource}`);
+    const sourceMap = {
+      billboard: BillboardDataSource,
+      imdb: IMDbDataSource,
+      steam: SteamDataSource,
+      hackernews: HackerNewsDataSource,
+      github: GitHubDataSource,
+      wikipedia: WikipediaDataSource,
+    };
+
+    const SourceClass = sourceMap[sourceName];
+    if (!SourceClass) {
+      throw new Error(`Source not implemented: ${sourceName}`);
     }
+
+    return new SourceClass(config, apiClient);
   }
 }
 
-// Main widget class
+// ============================================================================
+// MAIN WIDGET CLASS
+// ============================================================================
+
 class UniversalWidget {
   constructor() {
-    this.chartSource = args.widgetParameter || CONFIG.defaultChartSource;
-    this.dataSource = DataSourceFactory.create(this.chartSource);
-    this.sourceConfig = DATA_SOURCES[this.chartSource];
+    this.sourceName = args.widgetParameter || CONFIG.defaultSource;
+    this.apiClient = new APIClient(CONFIG.apiBaseUrl);
+    this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
   }
 
-  async main() {
+  async run() {
     try {
       const widgetSize = config.widgetFamily || "medium";
       const widget = await this.createWidget(widgetSize);
 
-      if (!config.runInWidget) {
-        const presentMethod = `present${this.capitalize(widgetSize)}`;
-        await widget[presentMethod]();
+      if (config.runsInWidget) {
+        Script.setWidget(widget);
+      } else {
+        await this.presentWidget(widget, widgetSize);
       }
 
-      Script.setWidget(widget);
       Script.complete();
     } catch (error) {
-      console.error("Widget creation failed:", error);
+      console.error("Widget error:", error);
       const errorWidget = this.createErrorWidget(error.message);
       Script.setWidget(errorWidget);
       Script.complete();
@@ -730,99 +1005,131 @@ class UniversalWidget {
 
   async createWidget(widgetSize) {
     const widget = new ListWidget();
+    const sizes = CONFIG.sizing[widgetSize];
 
-    const refreshHours = this.sourceConfig.refreshHours || CONFIG.refreshHours;
-    widget.refreshAfterDate = new Date(
-      Date.now() + refreshHours * 60 * 60 * 1000
+    // Configure widget appearance
+    widget.setPadding(
+      sizes.padding,
+      sizes.padding,
+      sizes.padding,
+      sizes.padding
     );
+
+    // Set refresh interval
+    const refreshDate = new Date(Date.now() + CONFIG.refreshInterval);
+    widget.refreshAfterDate = refreshDate;
+
+    // Set URL scheme if available
+    if (this.dataSource.config.urlScheme) {
+      widget.url = this.dataSource.config.urlScheme;
+    }
 
     try {
       const data = await this.dataSource.fetchData(widgetSize);
 
-      if (!data || this.dataSource.isEmpty(data)) {
-        return this.createErrorWidget("No data found.");
+      if (
+        !data ||
+        (data.items?.length === 0 &&
+          data.movies?.length === 0 &&
+          data.games?.length === 0 &&
+          data.stories?.length === 0 &&
+          data.releases?.length === 0 &&
+          data.edits?.length === 0)
+      ) {
+        return this.createErrorWidget("No data available");
       }
 
-      const mainStack = this.dataSource.buildContent(widget, data, widgetSize);
+      this.dataSource.renderWidget(widget, data, widgetSize);
 
-      if (this.sourceConfig.logoUrl && widgetSize != "small") {
-        await this.addSourceIcon(mainStack);
-      }
-
+      // Add update indicator for large widgets
       if (widgetSize === "large") {
-        this.addFooter(widget);
+        this.addFooter(widget, sizes);
       }
 
       return widget;
     } catch (error) {
-      console.error("Error creating widget:", error);
-      return this.createErrorWidget("Error loading data.");
-    }
-  }
-
-  async addSourceIcon(stack) {
-    try {
-      if (this.sourceConfig.logoUrl) {
-        const sourceImage = await this.loadImage(this.sourceConfig.logoUrl);
-        if (sourceImage) {
-          const iconStack = stack.addStack();
-          iconStack.layoutVertically();
-          iconStack.centerAlignContent();
-          const icon = iconStack.addImage(sourceImage);
-          icon.centerAlignImage();
-          icon.cornerRadius = 8;
-          icon.imageSize = new Size(25, 25);
-          if (this.sourceConfig.urlScheme) {
-            icon.url = this.sourceConfig.urlScheme;
-          }
-          iconStack.centerAlignContent();
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to load ${this.sourceConfig.name} icon:`, error);
-    }
-  }
-
-  addFooter(widget) {
-    const footer = widget.addStack();
-    footer.layoutHorizontally();
-    footer.addSpacer();
-
-    const footerTextStack = footer.addStack();
-    footerTextStack.backgroundColor = new Color("#b0b0b0", 0.6);
-    footerTextStack.cornerRadius = 3;
-    footerTextStack.setPadding(2, 4, 2, 4);
-
-    const text = footerTextStack.addText(this.sourceConfig.footerText);
-    text.font = Font.mediumSystemFont(9);
-    text.color = new Color("#efefef");
-    text.rightAlignText();
-  }
-
-  async loadImage(url) {
-    if (!url) return null;
-    try {
-      const request = new Request(url);
-      return await request.loadImage();
-    } catch (error) {
-      console.error(`Error loading image from ${url}:`, error);
-      return null;
+      console.error("Data fetch error:", error);
+      return this.createErrorWidget(error.message);
     }
   }
 
   createErrorWidget(message) {
     const widget = new ListWidget();
-    const errorText = widget.addText(`⚠ ${message}`);
-    errorText.font = Font.italicSystemFont(12);
-    errorText.textColor = CONFIG.colors.error;
+    const sizes = CONFIG.sizing["medium"];
+
+    widget.setPadding(
+      sizes.padding,
+      sizes.padding,
+      sizes.padding,
+      sizes.padding
+    );
+
+    const stack = widget.addStack();
+    stack.layoutVertically();
+    stack.centerAlignContent();
+
+    const icon = stack.addImage(
+      SFSymbol.named("exclamationmark.triangle.fill").image
+    );
+    icon.imageSize = new Size(32, 32);
+    icon.tintColor = CONFIG.colors.warning;
+
+    stack.addSpacer(8);
+
+    const errorText = stack.addText("Error");
+    errorText.font = Font.boldSystemFont(14);
+    errorText.textColor = CONFIG.colors.primary;
+    errorText.centerAlignText();
+
+    stack.addSpacer(4);
+
+    const messageText = stack.addText(message);
+    messageText.font = Font.systemFont(11);
+    messageText.textColor = CONFIG.colors.secondary;
+    messageText.centerAlignText();
+
     return widget;
   }
 
-  capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
+  addFooter(widget, sizes) {
+    widget.addSpacer();
+
+    const footer = widget.addStack();
+    footer.layoutHorizontally();
+    footer.addSpacer();
+
+    const updateTime = new Date();
+    const timeString = `Updated ${updateTime
+      .getHours()
+      .toString()
+      .padStart(2, "0")}:${updateTime
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+
+    const timeText = footer.addText(timeString);
+    timeText.font = Font.systemFont(sizes.fontSize.tertiary);
+    timeText.textColor = CONFIG.colors.tertiary;
+    timeText.rightAlignText();
+  }
+
+  async presentWidget(widget, widgetSize) {
+    const presentMap = {
+      small: () => widget.presentSmall(),
+      medium: () => widget.presentMedium(),
+      large: () => widget.presentLarge(),
+    };
+
+    const presentFunc = presentMap[widgetSize];
+    if (presentFunc) {
+      await presentFunc();
+    }
   }
 }
 
-// Initialize and run the widget
-const universalWidget = new UniversalWidget();
-await universalWidget.main();
+// ============================================================================
+// EXECUTION
+// ============================================================================
+
+const widget = new UniversalWidget();
+await widget.run();
