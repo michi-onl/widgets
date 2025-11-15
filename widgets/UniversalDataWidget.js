@@ -125,9 +125,12 @@ const CONFIG = {
       refreshHours: 2,
       urlScheme: "https://wikipedia.org/",
       // Configure Wikipedia watchlist credentials
-      username: "",
-      token: "", // Single token (or use tokenDe/tokenEn for language-specific)
-      languages: ["de", "en"],
+      // Format: "lang:username" for each language
+      usernames: "",
+      // Format: "lang:token" for each language
+      tokens: "",
+      // Languages to check
+      languages: "en,de",
       limit: 10,
     },
   },
@@ -298,12 +301,12 @@ class BillboardDataSource extends DataSource {
     return {
       title: response.music.data_title || "Billboard 200",
       subtitle: response.music.data_desc || "",
-      items: response.music.data.slice(0, limit).map((item, index) => ({
-        position: index + 1,
+      items: response.music.data.slice(0, limit).map((item) => ({
+        position: item.position,
         title: FormatUtils.cleanTitle(item.title),
         subtitle: item.artist,
         metadata: {
-          before: item.before,
+          last_week: item.last_week,
           peak: item.peak,
           weeks: item.weeks,
         },
@@ -382,18 +385,18 @@ class BillboardDataSource extends DataSource {
   }
 
   addPositionIndicator(stack, item, sizes) {
-    const before = item.metadata.before;
+    const lastWeek = item.metadata.last_week;
     const current = item.position;
 
     let symbol, color;
 
-    if (before === 0) {
+    if (lastWeek === 0) {
       symbol = "star.circle.fill";
       color = CONFIG.colors.new;
-    } else if (current < before) {
+    } else if (current < lastWeek) {
       symbol = "arrow.up.circle.fill";
       color = CONFIG.colors.up;
-    } else if (current > before) {
+    } else if (current > lastWeek) {
       symbol = "arrow.down.circle.fill";
       color = CONFIG.colors.down;
     } else {
@@ -434,13 +437,15 @@ class IMDbDataSource extends DataSource {
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
 
-    // Handle the actual API response structure
-    const movies = Array.isArray(response.movies)
-      ? response.movies.slice(0, Math.ceil(limit / 2))
-      : [];
-    const tvShows = Array.isArray(response.tv_shows)
-      ? response.tv_shows.slice(0, Math.ceil(limit / 2))
-      : [];
+    // Handle the actual API response structure - movies and tv_shows are objects with data arrays
+    const movies =
+      response.movies?.data && Array.isArray(response.movies.data)
+        ? response.movies.data.slice(0, Math.ceil(limit / 2))
+        : [];
+    const tvShows =
+      response.tv_shows?.data && Array.isArray(response.tv_shows.data)
+        ? response.tv_shows.data.slice(0, Math.ceil(limit / 2))
+        : [];
 
     return {
       movies: movies.map((m) => this.formatItem(m, "movie")),
@@ -472,23 +477,27 @@ class IMDbDataSource extends DataSource {
       moviesStack.layoutVertically();
 
       this.addSectionHeader(moviesStack, "Movies", sizes);
-      data.movies.forEach((item) => {
+      data.movies.forEach((item, index) => {
         this.renderItem(moviesStack, item, sizes);
-        moviesStack.addSpacer(sizes.spacing / 2);
+        if (index < data.movies.length - 1) {
+          moviesStack.addSpacer(sizes.spacing);
+        }
       });
     }
 
     if (widgetSize !== "small" && data.tvShows.length > 0) {
-      contentStack.addSpacer(sizes.spacing * 2);
+      contentStack.addSpacer(null);
 
       // TV Shows column
       const tvStack = contentStack.addStack();
       tvStack.layoutVertically();
 
       this.addSectionHeader(tvStack, "TV Shows", sizes);
-      data.tvShows.forEach((item) => {
+      data.tvShows.forEach((item, index) => {
         this.renderItem(tvStack, item, sizes);
-        tvStack.addSpacer(sizes.spacing / 2);
+        if (index < data.tvShows.length - 1) {
+          tvStack.addSpacer(sizes.spacing);
+        }
       });
     }
   }
@@ -499,13 +508,15 @@ class IMDbDataSource extends DataSource {
     itemStack.centerAlignContent();
 
     // Rating badge
-    if (item.rating) {
+    if (item.rating !== undefined && item.rating !== null) {
       const ratingStack = itemStack.addStack();
       ratingStack.backgroundColor = CONFIG.colors.accent;
       ratingStack.cornerRadius = 4;
       ratingStack.setPadding(2, 4, 2, 4);
 
-      const ratingText = ratingStack.addText(item.rating.toString());
+      // Display "+" for empty string, otherwise show the rating
+      const displayText = item.rating === "" ? "NEW" : item.rating.toString();
+      const ratingText = ratingStack.addText(displayText);
       ratingText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
       ratingText.textColor = Color.white();
 
@@ -545,7 +556,7 @@ class IMDbDataSource extends DataSource {
     const headerText = stack.addText(title);
     headerText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
     headerText.textColor = CONFIG.colors.secondary;
-    stack.addSpacer(sizes.spacing / 2);
+    stack.addSpacer(sizes.spacing);
   }
 }
 
@@ -616,7 +627,7 @@ class SteamDataSource extends DataSource {
     titleText.lineLimit = 1;
 
     const metaText = textStack.addText(
-      `${FormatUtils.formatDuration(game.hoursPlayed)} • ${game.username}`
+      `${FormatUtils.formatDuration(game.hoursPlayed)}`
     );
     metaText.font = Font.systemFont(sizes.fontSize.secondary);
     metaText.textColor = CONFIG.colors.secondary;
@@ -644,13 +655,14 @@ class HackerNewsDataSource extends DataSource {
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
 
+    // API returns stories array with different field names
     return {
       stories: response.stories.slice(0, limit).map((story) => ({
         title: FormatUtils.truncate(story.title, 50),
         points: story.points,
-        comments: story.descendants,
-        author: story.by,
-        timeAgo: FormatUtils.formatTimeAgo(story.time * 1000), // Unix timestamp to milliseconds
+        comments: story.numComments,
+        author: story.author,
+        timeAgo: story.timePosted,
         url: story.url,
       })),
     };
@@ -744,43 +756,47 @@ class GitHubDataSource extends DataSource {
   async fetchData(widgetSize) {
     const repos = this.config.repos.join(",");
     const response = await this.api.fetch(this.config.endpoint, { repos });
-
     const limit = CONFIG.sizing[widgetSize].maxItems;
-    const allReleases = [];
 
-    // Safely handle response
-    if (!response || !response.repositories) {
+    // The API returns releases directly in an array
+    if (!response || !Array.isArray(response.releases)) {
       return { releases: [] };
     }
 
-    for (const [repo, repoData] of Object.entries(response.repositories)) {
-      if (repoData && Array.isArray(repoData.releases)) {
-        repoData.releases.forEach((release) => {
-          allReleases.push({
-            repo: repo,
-            name: release.name || release.tag_name,
-            tagName: release.tag_name,
-            publishedAt: release.published_at,
-            author: release.author?.login || "Unknown",
-            isPrerelease: release.prerelease,
-            url: release.html_url,
-          });
-        });
-      }
-    }
-
-    allReleases.sort(
-      (a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)
-    );
+    const allReleases = response.releases.map((release) => ({
+      repo: this.extractRepoName(release.repo),
+      name: release.name || release.tagName,
+      tagName: this.cleanTagName(release.tagName),
+      publishedAt: release.publishedAt,
+      timeAgo: release.timeAgo,
+      author: release.author,
+      isPrerelease: release.isPrerelease,
+      url: release.url,
+    }));
 
     return {
       releases: allReleases.slice(0, limit),
     };
   }
 
+  extractRepoName(repoString) {
+    // Extract repo name from "owner/repo" format
+    if (repoString.includes("/")) {
+      return repoString.split("/").pop();
+    }
+    return repoString;
+  }
+
+  cleanTagName(tagName) {
+    // Remove "releases/" prefix if present
+    if (tagName.startsWith("releases/")) {
+      return tagName.substring(9); // Remove "releases/"
+    }
+    return tagName;
+  }
+
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
-
     this.addHeader(widget, "Recent Releases", sizes);
     widget.addSpacer(sizes.spacing);
 
@@ -809,7 +825,7 @@ class GitHubDataSource extends DataSource {
     headerStack.addSpacer(4);
 
     const tagText = headerStack.addText(release.tagName);
-    tagText.font = Font.monospacedSystemFont(sizes.fontSize.tertiary);
+    tagText.font = Font.systemFont(sizes.fontSize.tertiary);
     tagText.textColor = CONFIG.colors.secondary;
 
     if (release.isPrerelease) {
@@ -820,7 +836,7 @@ class GitHubDataSource extends DataSource {
     }
 
     const metaText = itemStack.addText(
-      `${release.author} • ${FormatUtils.formatTimeAgo(release.publishedAt)}`
+      `${release.author} • ${release.timeAgo}`
     );
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
@@ -831,7 +847,6 @@ class GitHubDataSource extends DataSource {
     const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
     icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
     icon.tintColor = CONFIG.colors.accent;
-
     headerStack.addSpacer(sizes.spacing);
 
     const titleText = headerStack.addText(title);
@@ -842,19 +857,11 @@ class GitHubDataSource extends DataSource {
 
 class WikipediaDataSource extends DataSource {
   async fetchData(widgetSize) {
-    // Handle token configuration - support both single token and language-specific tokens
-    const token =
-      this.config.token || this.config.tokenDe || this.config.tokenEn;
-
-    if (!token) {
-      throw new Error("Wikipedia token not configured");
-    }
-
     const params = {
-      username: this.config.username,
-      token: token,
-      languages: this.config.languages.join(","),
-      limit: CONFIG.sizing[widgetSize].maxItems,
+      username: this.config.usernames,
+      token: this.config.tokens,
+      lang: this.config.languages,
+      limit: this.config.limit || CONFIG.sizing[widgetSize].maxItems,
     };
 
     const response = await this.api.fetch(this.config.endpoint, params);
@@ -870,7 +877,7 @@ class WikipediaDataSource extends DataSource {
         language: edit.languageName || edit.language,
         user: edit.user,
         timeAgo: edit.timeAgo,
-        comment: FormatUtils.truncate(edit.comment, 60),
+        comment: FormatUtils.truncate(edit.comment || "N/A", 60),
         url: edit.url,
       })),
     };
