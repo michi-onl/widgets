@@ -112,11 +112,11 @@ const CONFIG = {
     github: {
       name: "GitHub Releases",
       endpoint: "/github-releases",
-      icon: "arrow.down.circle.fill",
+      icon: "arrow.down.circle",
       refreshHours: 6,
       urlScheme: "https://github.com/",
       // Add repositories to track (format: "owner/repo")
-      repos: ["anthropics/anthropic-sdk-python", "fasthtml/fasthtml"],
+      repos: ["zen-browser/desktop", "wikimedia/wikipedia-ios"],
     },
     wikipedia: {
       name: "Wikipedia Edits",
@@ -391,16 +391,16 @@ class BillboardDataSource extends DataSource {
     let symbol, color;
 
     if (lastWeek === 0) {
-      symbol = "star.circle.fill";
+      symbol = "star.circle";
       color = CONFIG.colors.new;
     } else if (current < lastWeek) {
-      symbol = "arrow.up.circle.fill";
+      symbol = "arrow.up.circle";
       color = CONFIG.colors.up;
     } else if (current > lastWeek) {
-      symbol = "arrow.down.circle.fill";
+      symbol = "arrow.down.circle";
       color = CONFIG.colors.down;
     } else {
-      symbol = "minus.circle.fill";
+      symbol = "minus.circle";
       color = CONFIG.colors.unchanged;
     }
 
@@ -574,7 +574,7 @@ class SteamDataSource extends DataSource {
           allGames.push({
             name: game.name,
             hoursPlayed: game.hoursPlayedNumeric || 0,
-            username: username,
+            lastPlayedShort: game.lastPlayedShort,
           });
         });
       }
@@ -627,7 +627,9 @@ class SteamDataSource extends DataSource {
     titleText.lineLimit = 1;
 
     const metaText = textStack.addText(
-      `${FormatUtils.formatDuration(game.hoursPlayed)}`
+      `${FormatUtils.formatDuration(game.hoursPlayed)} • ${
+        game.lastPlayedShort
+      }`
     );
     metaText.font = Font.systemFont(sizes.fontSize.secondary);
     metaText.textColor = CONFIG.colors.secondary;
@@ -858,9 +860,9 @@ class GitHubDataSource extends DataSource {
 class WikipediaDataSource extends DataSource {
   async fetchData(widgetSize) {
     const params = {
-      username: this.config.usernames,
-      token: this.config.tokens,
-      lang: this.config.languages,
+      usernames: this.config.usernames,
+      tokens: this.config.tokens,
+      languages: this.config.languages,
       limit: this.config.limit || CONFIG.sizing[widgetSize].maxItems,
     };
 
@@ -874,11 +876,11 @@ class WikipediaDataSource extends DataSource {
     return {
       edits: response.edits.map((edit) => ({
         title: FormatUtils.truncate(edit.title, 40),
-        language: edit.languageName || edit.language,
-        user: edit.user,
+        language: edit.language,
+        user: edit.creator,
         timeAgo: edit.timeAgo,
-        comment: FormatUtils.truncate(edit.comment || "N/A", 60),
-        url: edit.url,
+        comment: FormatUtils.truncate(edit.description || "", 60),
+        url: edit.link,
       })),
     };
   }
@@ -1076,7 +1078,7 @@ class UniversalWidget {
     stack.centerAlignContent();
 
     const icon = stack.addImage(
-      SFSymbol.named("exclamationmark.triangle.fill").image
+      SFSymbol.named("exclamationmark.triangle").image
     );
     icon.imageSize = new Size(32, 32);
     icon.tintColor = CONFIG.colors.warning;
