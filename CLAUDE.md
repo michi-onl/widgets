@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+![Screenshot of widgets on MacOS](images/desktop.png)
+
 ## Project Overview
 
 iOS/macOS widgets for the [Scriptable](https://scriptable.app/) app. The entire project is a single JavaScript file (`UniversalDataWidget.js`) that runs inside Scriptable on device. There is no build system, package manager, or test runner — development is editing the JS file directly and testing inside the Scriptable app.
