@@ -7,7 +7,7 @@
  * Author: Michael Wagner, michi.onl
  *
  * A comprehensive Scriptable widget displaying data from multiple sources
- * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia
+ * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline
  *
  * Configuration: Set widget parameter to source name (e.g., "billboard")
  * or leave empty to use defaultSource from CONFIG
@@ -20,8 +20,7 @@
 const CONFIG = {
   // Default settings
   defaultSource: "billboard",
-  apiBaseUrl: "https://api.michi.onl",
-  refreshInterval: 3600000, // 1 hour in milliseconds
+  apiBaseUrl: "https://api.michi.onl/api",
 
   // Widget sizing configuration
   sizing: {
@@ -40,7 +39,7 @@ const CONFIG = {
       padding: 14,
     },
     large: {
-      maxItems: 10,
+      maxItems: 12,
       fontSize: { primary: 13, secondary: 11, tertiary: 10 },
       iconSize: 18,
       spacing: 8,
@@ -57,9 +56,7 @@ const CONFIG = {
 
     // Semantic colors
     accent: new Color("#007AFF"),
-    success: new Color("#34C759"),
     warning: new Color("#FF9500"),
-    error: new Color("#FF3B30"),
 
     // Status indicators
     new: new Color("#FF9500"),
@@ -67,14 +64,7 @@ const CONFIG = {
     down: new Color("#FF3B30"),
     unchanged: Color.dynamic(new Color("#8E8E93"), new Color("#636366")),
 
-    // Background colors
-    cardBackground: Color.dynamic(
-      new Color("#FFFFFF", 0.8),
-      new Color("#1C1C1E", 0.8)
-    ),
-
-    // Specialized colors
-    star: new Color("#FFD60A"),
+    white: Color.white(),
   },
 
   // Source-specific configuration
@@ -133,6 +123,13 @@ const CONFIG = {
       languages: "en,de",
       limit: 10,
     },
+    timeline: {
+      name: "Timeline",
+      endpoint: "/timeline",
+      icon: "clock.arrow.circlepath",
+      refreshHours: 1,
+      urlScheme: "https://www.michi.onl/",
+    },
   },
 };
 
@@ -143,6 +140,7 @@ const CONFIG = {
 class APIClient {
   constructor(baseUrl) {
     this.baseUrl = baseUrl;
+    this.timeout = 10; // 10 seconds, matching API timeout
   }
 
   async fetch(endpoint, params = {}) {
@@ -150,6 +148,7 @@ class APIClient {
     console.log(`Fetching: ${url}`);
 
     const request = new Request(url);
+    request.timeoutInterval = this.timeout;
 
     try {
       const response = await request.loadJSON();
@@ -162,27 +161,50 @@ class APIClient {
     }
   }
 
-  buildUrl(endpoint, params) {
-    let url = this.baseUrl + endpoint;
+  async post(endpoint, body = {}) {
+    const url = this.baseUrl + endpoint;
+    console.log(`POST: ${url}`);
 
-    const queryParams = Object.entries(params)
-      .filter(([key, value]) => value !== null && value !== undefined)
+    const request = new Request(url);
+    request.method = "POST";
+    request.timeoutInterval = this.timeout;
+    request.headers = {
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+
+    request.body = this.encodeParams(body);
+
+    try {
+      const response = await request.loadJSON();
+      console.log(`Success: ${endpoint}`);
+      return response;
+    } catch (error) {
+      console.error(`API Error for ${endpoint}: ${error.message}`);
+      throw new Error(`Failed to POST to ${endpoint}: ${error.message}`);
+    }
+  }
+
+  encodeParams(params) {
+    return Object.entries(params)
+      .filter(([, value]) => value !== null && value !== undefined)
       .map(
         ([key, value]) =>
           `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
       )
       .join("&");
+  }
 
-    if (queryParams) {
-      url += "?" + queryParams;
-    }
-
+  buildUrl(endpoint, params) {
+    let url = this.baseUrl + endpoint;
+    const query = this.encodeParams(params);
+    if (query) url += "?" + query;
     return url;
   }
 }
 
 class ImageCache {
   static cache = {};
+  static timeout = 5; // 5 seconds for image loading
 
   static async load(url) {
     if (!url) return null;
@@ -193,6 +215,7 @@ class ImageCache {
 
     try {
       const request = new Request(url);
+      request.timeoutInterval = this.timeout;
       const image = await request.loadImage();
       this.cache[url] = image;
       return image;
@@ -200,6 +223,142 @@ class ImageCache {
       console.error(`Failed to load image: ${url}`);
       return null;
     }
+  }
+}
+
+class CacheManager {
+  static maxAgeHours = 48; // Maximum cache age for offline fallback
+
+  static getFileManager() {
+    try {
+      return FileManager.iCloud();
+    } catch {
+      return FileManager.local();
+    }
+  }
+
+  static getCachePath(source) {
+    const fm = this.getFileManager();
+    const cacheDir = fm.joinPath(fm.documentsDirectory(), "widget-cache");
+    if (!fm.fileExists(cacheDir)) {
+      fm.createDirectory(cacheDir);
+    }
+    return { fm, path: fm.joinPath(cacheDir, `cache_${source}.json`) };
+  }
+
+  static async save(source, data) {
+    try {
+      const { fm, path: cachePath } = this.getCachePath(source);
+
+      const cacheData = {
+        timestamp: Date.now(),
+        data: data,
+      };
+
+      fm.writeString(cachePath, JSON.stringify(cacheData));
+      console.log(`Cache saved for ${source}`);
+    } catch (error) {
+      console.error(`Failed to save cache for ${source}: ${error.message}`);
+    }
+  }
+
+  static async load(source) {
+    try {
+      const { fm, path: cachePath } = this.getCachePath(source);
+
+      if (!fm.fileExists(cachePath)) {
+        return null;
+      }
+
+      // Ensure iCloud file is downloaded
+      if (fm.isFileStoredIniCloud && fm.isFileStoredIniCloud(cachePath)) {
+        await fm.downloadFileFromiCloud(cachePath);
+      }
+
+      const cacheContent = fm.readString(cachePath);
+      const cacheData = JSON.parse(cacheContent);
+
+      // Check if cache is within max age
+      const ageHours = (Date.now() - cacheData.timestamp) / (1000 * 60 * 60);
+      if (ageHours > this.maxAgeHours) {
+        console.log(`Cache for ${source} expired (${ageHours.toFixed(1)}h old)`);
+        return null;
+      }
+
+      console.log(`Cache loaded for ${source} (${ageHours.toFixed(1)}h old)`);
+      return {
+        data: cacheData.data,
+        isStale: ageHours > (CONFIG.sources[source]?.refreshHours || 1),
+        ageHours: ageHours,
+      };
+    } catch (error) {
+      console.error(`Failed to load cache for ${source}: ${error.message}`);
+      return null;
+    }
+  }
+}
+
+class CredentialManager {
+  static keyPrefix = "widget_";
+
+  static getKey(source, type) {
+    return `${this.keyPrefix}${source}_${type}`;
+  }
+
+  static save(source, type, value) {
+    const key = this.getKey(source, type);
+    Keychain.set(key, value);
+    console.log(`Credential saved: ${key}`);
+  }
+
+  static load(source, type) {
+    const key = this.getKey(source, type);
+    return Keychain.contains(key) ? Keychain.get(key) : null;
+  }
+
+  static hasCredentials(source) {
+    if (source === "wikipedia") {
+      return (
+        Keychain.contains(this.getKey("wikipedia", "usernames")) &&
+        Keychain.contains(this.getKey("wikipedia", "tokens"))
+      );
+    }
+    return true;
+  }
+
+  static async setupWizard(source) {
+    if (source !== "wikipedia") {
+      return true;
+    }
+
+    const alert = new Alert();
+    alert.title = "Wikipedia Setup";
+    alert.message =
+      "Enter your Wikipedia watchlist credentials.\n\nFormat for usernames: lang:username,lang:username\nFormat for tokens: lang:token,lang:token";
+
+    alert.addTextField("Usernames (e.g., en:MyUser,de:MyUser)");
+    alert.addSecureTextField("Tokens");
+    alert.addTextField("Languages (e.g., en,de)");
+
+    alert.addAction("Save");
+    alert.addCancelAction("Cancel");
+
+    const result = await alert.presentAlert();
+
+    if (result === 0) {
+      const usernames = alert.textFieldValue(0);
+      const tokens = alert.textFieldValue(1);
+      const languages = alert.textFieldValue(2);
+
+      if (usernames && tokens && languages) {
+        this.save("wikipedia", "usernames", usernames);
+        this.save("wikipedia", "tokens", tokens);
+        this.save("wikipedia", "languages", languages);
+        return true;
+      }
+    }
+
+    return false;
   }
 }
 
@@ -219,13 +378,7 @@ class FormatUtils {
   static formatTimeAgo(dateString) {
     if (!dateString) return "Unknown";
 
-    let date;
-    // Handle Unix timestamp (number)
-    if (typeof dateString === "number") {
-      date = new Date(dateString);
-    } else {
-      date = new Date(dateString);
-    }
+    const date = new Date(dateString);
 
     // Check if date is valid
     if (isNaN(date.getTime())) return "Unknown";
@@ -284,12 +437,45 @@ class DataSource {
     throw new Error("fetchData must be implemented by subclass");
   }
 
+  isEmpty(data) {
+    throw new Error("isEmpty must be implemented by subclass");
+  }
+
   renderWidget(widget, data, widgetSize) {
     throw new Error("renderWidget must be implemented by subclass");
+  }
+
+  addHeader(widget, title, sizes) {
+    const headerStack = widget.addStack();
+    headerStack.layoutHorizontally();
+    headerStack.centerAlignContent();
+
+    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
+    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.tintColor = CONFIG.colors.accent;
+
+    headerStack.addSpacer(sizes.spacing);
+
+    const titleText = headerStack.addText(title);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+  }
+
+  renderItemList(stack, items, sizes) {
+    items.forEach((item, index) => {
+      this.renderItem(stack, item, sizes);
+      if (index < items.length - 1) {
+        stack.addSpacer(sizes.spacing);
+      }
+    });
   }
 }
 
 class BillboardDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.items || data.items.length === 0;
+  }
+
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
@@ -409,42 +595,29 @@ class BillboardDataSource extends DataSource {
     icon.tintColor = color;
   }
 
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    headerStack.layoutHorizontally();
-    headerStack.centerAlignContent();
-
-    const iconImage = SFSymbol.named(this.config.icon).image;
-    const icon = headerStack.addImage(iconImage);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
-
-    headerStack.addSpacer(sizes.spacing);
-
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
-    titleText.textColor = CONFIG.colors.primary;
-  }
-
   getColumnLayout(widgetSize) {
-    return widgetSize === "small" ? 1 : widgetSize === "medium" ? 2 : 2;
+    return widgetSize === "small" ? 1 : widgetSize === "medium" ? 2 : 3;
   }
 }
 
 class IMDbDataSource extends DataSource {
+  isEmpty(data) {
+    return (!data.movies || data.movies.length === 0) && (!data.tvShows || data.tvShows.length === 0);
+  }
+
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
+    const half = Math.ceil(limit / 2);
 
-    // Handle the actual API response structure - movies and tv_shows are objects with data arrays
     const movies =
       response.movies?.data && Array.isArray(response.movies.data)
-        ? response.movies.data.slice(0, Math.ceil(limit / 2))
+        ? response.movies.data.slice(0, half)
         : [];
     const tvShows =
-      response.tv_shows?.data && Array.isArray(response.tv_shows.data)
-        ? response.tv_shows.data.slice(0, Math.ceil(limit / 2))
+      widgetSize !== "small" && response.tv_shows?.data && Array.isArray(response.tv_shows.data)
+        ? response.tv_shows.data.slice(0, half)
         : [];
 
     return {
@@ -477,12 +650,7 @@ class IMDbDataSource extends DataSource {
       moviesStack.layoutVertically();
 
       this.addSectionHeader(moviesStack, "Movies", sizes);
-      data.movies.forEach((item, index) => {
-        this.renderItem(moviesStack, item, sizes);
-        if (index < data.movies.length - 1) {
-          moviesStack.addSpacer(sizes.spacing);
-        }
-      });
+      this.renderItemList(moviesStack, data.movies, sizes);
     }
 
     if (widgetSize !== "small" && data.tvShows.length > 0) {
@@ -493,12 +661,7 @@ class IMDbDataSource extends DataSource {
       tvStack.layoutVertically();
 
       this.addSectionHeader(tvStack, "TV Shows", sizes);
-      data.tvShows.forEach((item, index) => {
-        this.renderItem(tvStack, item, sizes);
-        if (index < data.tvShows.length - 1) {
-          tvStack.addSpacer(sizes.spacing);
-        }
-      });
+      this.renderItemList(tvStack, data.tvShows, sizes);
     }
   }
 
@@ -518,7 +681,7 @@ class IMDbDataSource extends DataSource {
       const displayText = item.rating === "" ? "NEW" : item.rating.toString();
       const ratingText = ratingStack.addText(displayText);
       ratingText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
-      ratingText.textColor = Color.white();
+      ratingText.textColor = CONFIG.colors.white;
 
       itemStack.addSpacer(sizes.spacing);
     }
@@ -537,21 +700,6 @@ class IMDbDataSource extends DataSource {
     subtitleText.textColor = CONFIG.colors.secondary;
   }
 
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    headerStack.layoutHorizontally();
-
-    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
-
-    headerStack.addSpacer(sizes.spacing);
-
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
-    titleText.textColor = CONFIG.colors.primary;
-  }
-
   addSectionHeader(stack, title, sizes) {
     const headerText = stack.addText(title);
     headerText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
@@ -561,6 +709,10 @@ class IMDbDataSource extends DataSource {
 }
 
 class SteamDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.games || data.games.length === 0;
+  }
+
   async fetchData(widgetSize) {
     const profiles = this.config.profiles.join(",");
     const response = await this.api.fetch(this.config.endpoint, { profiles });
@@ -575,6 +727,7 @@ class SteamDataSource extends DataSource {
             name: game.name,
             hoursPlayed: game.hoursPlayedNumeric || 0,
             lastPlayedShort: game.lastPlayedShort,
+            iconUrl: game.iconUrl || null,
           });
         });
       }
@@ -583,9 +736,22 @@ class SteamDataSource extends DataSource {
     // Sort by play time and take top items
     allGames.sort((a, b) => b.hoursPlayed - a.hoursPlayed);
 
+    // Pre-load game icons
+    const games = allGames.slice(0, limit);
+    await this.preloadIcons(games);
+
     return {
-      games: allGames.slice(0, limit),
+      games: games,
     };
+  }
+
+  async preloadIcons(games) {
+    const loadPromises = games.map(async (game) => {
+      if (game.iconUrl) {
+        game.icon = await ImageCache.load(game.iconUrl);
+      }
+    });
+    await Promise.all(loadPromises);
   }
 
   renderWidget(widget, data, widgetSize) {
@@ -597,12 +763,7 @@ class SteamDataSource extends DataSource {
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    data.games.forEach((game, index) => {
-      this.renderItem(contentStack, game, sizes);
-      if (index < data.games.length - 1) {
-        contentStack.addSpacer(sizes.spacing);
-      }
-    });
+    this.renderItemList(contentStack, data.games, sizes);
   }
 
   renderItem(stack, game, sizes) {
@@ -610,11 +771,18 @@ class SteamDataSource extends DataSource {
     itemStack.layoutHorizontally();
     itemStack.centerAlignContent();
 
-    const icon = itemStack.addImage(
-      SFSymbol.named("gamecontroller.fill").image
-    );
-    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
-    icon.tintColor = CONFIG.colors.secondary;
+    // Use cached game icon or fall back to SF Symbol
+    if (game.icon) {
+      const iconImg = itemStack.addImage(game.icon);
+      iconImg.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+      iconImg.cornerRadius = 3;
+    } else {
+      const icon = itemStack.addImage(
+        SFSymbol.named("gamecontroller.fill").image
+      );
+      icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+      icon.tintColor = CONFIG.colors.secondary;
+    }
 
     itemStack.addSpacer(sizes.spacing);
 
@@ -636,22 +804,13 @@ class SteamDataSource extends DataSource {
 
     itemStack.addSpacer();
   }
-
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
-
-    headerStack.addSpacer(sizes.spacing);
-
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
-    titleText.textColor = CONFIG.colors.primary;
-  }
 }
 
 class HackerNewsDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.stories || data.stories.length === 0;
+  }
+
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
@@ -711,12 +870,7 @@ class HackerNewsDataSource extends DataSource {
       const contentStack = widget.addStack();
       contentStack.layoutVertically();
 
-      data.stories.forEach((story, index) => {
-        this.renderItem(contentStack, story, sizes);
-        if (index < data.stories.length - 1) {
-          contentStack.addSpacer(sizes.spacing);
-        }
-      });
+      this.renderItemList(contentStack, data.stories, sizes);
     }
   }
 
@@ -739,22 +893,13 @@ class HackerNewsDataSource extends DataSource {
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
   }
-
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
-
-    headerStack.addSpacer(sizes.spacing);
-
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
-    titleText.textColor = CONFIG.colors.primary;
-  }
 }
 
 class GitHubDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.releases || data.releases.length === 0;
+  }
+
   async fetchData(widgetSize) {
     const repos = this.config.repos.join(",");
     const response = await this.api.fetch(this.config.endpoint, { repos });
@@ -767,13 +912,10 @@ class GitHubDataSource extends DataSource {
 
     const allReleases = response.releases.map((release) => ({
       repo: this.extractRepoName(release.repo),
-      name: release.name || release.tagName,
       tagName: this.cleanTagName(release.tagName),
-      publishedAt: release.publishedAt,
       timeAgo: release.timeAgo,
       author: release.author,
       isPrerelease: release.isPrerelease,
-      url: release.url,
     }));
 
     return {
@@ -792,7 +934,7 @@ class GitHubDataSource extends DataSource {
   cleanTagName(tagName) {
     // Remove "releases/" prefix if present
     if (tagName.startsWith("releases/")) {
-      return tagName.substring(9); // Remove "releases/"
+      return tagName.substring("releases/".length);
     }
     return tagName;
   }
@@ -805,12 +947,7 @@ class GitHubDataSource extends DataSource {
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    data.releases.forEach((release, index) => {
-      this.renderItem(contentStack, release, sizes);
-      if (index < data.releases.length - 1) {
-        contentStack.addSpacer(sizes.spacing);
-      }
-    });
+    this.renderItemList(contentStack, data.releases, sizes);
   }
 
   renderItem(stack, release, sizes) {
@@ -843,30 +980,31 @@ class GitHubDataSource extends DataSource {
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
   }
-
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
-    headerStack.addSpacer(sizes.spacing);
-
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
-    titleText.textColor = CONFIG.colors.primary;
-  }
 }
 
 class WikipediaDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.edits || data.edits.length === 0;
+  }
+
   async fetchData(widgetSize) {
-    const params = {
-      usernames: this.config.usernames,
-      tokens: this.config.tokens,
-      languages: this.config.languages,
+    // Load credentials from Keychain with fallback to config
+    const usernames =
+      CredentialManager.load("wikipedia", "usernames") || this.config.usernames;
+    const tokens =
+      CredentialManager.load("wikipedia", "tokens") || this.config.tokens;
+    const languages =
+      CredentialManager.load("wikipedia", "languages") || this.config.languages;
+
+    const body = {
+      usernames: usernames,
+      tokens: tokens,
+      languages: languages,
       limit: this.config.limit || CONFIG.sizing[widgetSize].maxItems,
     };
 
-    const response = await this.api.fetch(this.config.endpoint, params);
+    // Use POST method as required by the API
+    const response = await this.api.post(this.config.endpoint, body);
 
     // Safely handle response
     if (!response || !Array.isArray(response.edits)) {
@@ -894,12 +1032,7 @@ class WikipediaDataSource extends DataSource {
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    data.edits.forEach((edit, index) => {
-      this.renderItem(contentStack, edit, sizes);
-      if (index < data.edits.length - 1) {
-        contentStack.addSpacer(sizes.spacing);
-      }
-    });
+    this.renderItemList(contentStack, data.edits, sizes);
   }
 
   renderItem(stack, edit, sizes) {
@@ -916,7 +1049,7 @@ class WikipediaDataSource extends DataSource {
 
     const langText = langBadge.addText(edit.language);
     langText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
-    langText.textColor = Color.white();
+    langText.textColor = CONFIG.colors.white;
 
     headerStack.addSpacer(sizes.spacing);
 
@@ -936,18 +1069,96 @@ class WikipediaDataSource extends DataSource {
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.tertiary;
   }
+}
 
-  addHeader(widget, title, sizes) {
-    const headerStack = widget.addStack();
-    const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
-    icon.tintColor = CONFIG.colors.accent;
+class TimelineDataSource extends DataSource {
+  static sourceIcons = {
+    github: "chevron.left.forwardslash.chevron.right",
+    wikipedia: "book.fill",
+    blog: "doc.text.fill",
+    gallery: "photo.fill",
+    imdb: "film.fill",
+  };
 
-    headerStack.addSpacer(sizes.spacing);
+  static sourceColors = {
+    github: new Color("#6e5494"),
+    wikipedia: new Color("#636466"),
+    blog: new Color("#007AFF"),
+    gallery: new Color("#34C759"),
+    imdb: new Color("#F5C518"),
+  };
 
-    const titleText = headerStack.addText(title);
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
+  isEmpty(data) {
+    return !data.events || data.events.length === 0;
+  }
+
+  async fetchData(widgetSize) {
+    const response = await this.api.fetch(this.config.endpoint);
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+
+    if (!response || !Array.isArray(response)) {
+      return { events: [] };
+    }
+
+    return {
+      events: response.slice(0, limit).map((item) => ({
+        title: item.title,
+        source: item.source,
+        date: item.date,
+        url: item.url,
+      })),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Timeline", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    this.renderItemList(contentStack, data.events, sizes);
+  }
+
+  renderItem(stack, event, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
+
+    // Source badge
+    const badgeStack = itemStack.addStack();
+    badgeStack.backgroundColor =
+      TimelineDataSource.sourceColors[event.source] || CONFIG.colors.accent;
+    badgeStack.cornerRadius = 4;
+    badgeStack.setPadding(2, 4, 2, 4);
+
+    const sourceIcon =
+      TimelineDataSource.sourceIcons[event.source] || "questionmark.circle";
+    const iconImg = badgeStack.addImage(SFSymbol.named(sourceIcon).image);
+    iconImg.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+    iconImg.tintColor = CONFIG.colors.white;
+
+    itemStack.addSpacer(sizes.spacing);
+
+    // Text content
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(
+      FormatUtils.truncate(event.title, 40)
+    );
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    const timeText = textStack.addText(FormatUtils.formatTimeAgo(event.date));
+    timeText.font = Font.systemFont(sizes.fontSize.tertiary);
+    timeText.textColor = CONFIG.colors.secondary;
+
+    itemStack.addSpacer();
   }
 }
 
@@ -956,25 +1167,22 @@ class WikipediaDataSource extends DataSource {
 // ============================================================================
 
 class DataSourceFactory {
+  static sourceMap = {
+    billboard: BillboardDataSource,
+    imdb: IMDbDataSource,
+    steam: SteamDataSource,
+    hackernews: HackerNewsDataSource,
+    github: GitHubDataSource,
+    wikipedia: WikipediaDataSource,
+    timeline: TimelineDataSource,
+  };
+
   static create(sourceName, apiClient) {
     const config = CONFIG.sources[sourceName];
+    const SourceClass = this.sourceMap[sourceName];
 
-    if (!config) {
+    if (!config || !SourceClass) {
       throw new Error(`Unknown source: ${sourceName}`);
-    }
-
-    const sourceMap = {
-      billboard: BillboardDataSource,
-      imdb: IMDbDataSource,
-      steam: SteamDataSource,
-      hackernews: HackerNewsDataSource,
-      github: GitHubDataSource,
-      wikipedia: WikipediaDataSource,
-    };
-
-    const SourceClass = sourceMap[sourceName];
-    if (!SourceClass) {
-      throw new Error(`Source not implemented: ${sourceName}`);
     }
 
     return new SourceClass(config, apiClient);
@@ -995,6 +1203,23 @@ class UniversalWidget {
   async run() {
     try {
       const widgetSize = config.widgetFamily || "medium";
+
+      // When running in app (not widget), offer credential setup
+      if (!config.runsInWidget && this.sourceName === "wikipedia") {
+        if (!CredentialManager.hasCredentials("wikipedia")) {
+          const setupSuccess = await CredentialManager.setupWizard("wikipedia");
+          if (!setupSuccess) {
+            const alert = new Alert();
+            alert.title = "Setup Cancelled";
+            alert.message = "Wikipedia credentials are required for this widget.";
+            alert.addAction("OK");
+            await alert.presentAlert();
+            Script.complete();
+            return;
+          }
+        }
+      }
+
       const widget = await this.createWidget(widgetSize);
 
       if (config.runsInWidget) {
@@ -1024,8 +1249,10 @@ class UniversalWidget {
       sizes.padding
     );
 
-    // Set refresh interval
-    const refreshDate = new Date(Date.now() + CONFIG.refreshInterval);
+    // Set refresh interval using per-source configuration
+    const refreshHours = this.dataSource.config.refreshHours || 1;
+    const refreshMs = refreshHours * 60 * 60 * 1000;
+    const refreshDate = new Date(Date.now() + refreshMs);
     widget.refreshAfterDate = refreshDate;
 
     // Set URL scheme if available
@@ -1033,33 +1260,43 @@ class UniversalWidget {
       widget.url = this.dataSource.config.urlScheme;
     }
 
+    let data = null;
+    let usingCache = false;
+
     try {
-      const data = await this.dataSource.fetchData(widgetSize);
+      // Try to fetch fresh data
+      data = await this.dataSource.fetchData(widgetSize);
 
-      if (
-        !data ||
-        (data.items?.length === 0 &&
-          data.movies?.length === 0 &&
-          data.games?.length === 0 &&
-          data.stories?.length === 0 &&
-          data.releases?.length === 0 &&
-          data.edits?.length === 0)
-      ) {
-        return this.createErrorWidget("No data available");
+      // Cache successful response
+      if (data) {
+        await CacheManager.save(this.sourceName, data);
       }
-
-      this.dataSource.renderWidget(widget, data, widgetSize);
-
-      // Add update indicator for large widgets
-      if (widgetSize === "large") {
-        this.addFooter(widget, sizes);
-      }
-
-      return widget;
     } catch (error) {
       console.error("Data fetch error:", error);
-      return this.createErrorWidget(error.message);
+
+      // Try to load from cache on failure
+      const cached = await CacheManager.load(this.sourceName);
+      if (cached) {
+        data = cached.data;
+        usingCache = true;
+        console.log(`Using cached data (${cached.ageHours.toFixed(1)}h old)`);
+      } else {
+        return this.createErrorWidget(error.message);
+      }
     }
+
+    if (!data || this.dataSource.isEmpty(data)) {
+      return this.createErrorWidget("No data available");
+    }
+
+    this.dataSource.renderWidget(widget, data, widgetSize);
+
+    // Add update indicator for large widgets
+    if (widgetSize === "large") {
+      this.addFooter(widget, sizes, usingCache);
+    }
+
+    return widget;
   }
 
   createErrorWidget(message) {
@@ -1100,11 +1337,25 @@ class UniversalWidget {
     return widget;
   }
 
-  addFooter(widget, sizes) {
+  addFooter(widget, sizes, usingCache = false) {
     widget.addSpacer();
 
     const footer = widget.addStack();
     footer.layoutHorizontally();
+
+    // Show offline indicator when using cached data
+    if (usingCache) {
+      const offlineIcon = footer.addImage(SFSymbol.named("icloud.slash").image);
+      offlineIcon.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      offlineIcon.tintColor = CONFIG.colors.warning;
+
+      footer.addSpacer(4);
+
+      const offlineText = footer.addText("Offline");
+      offlineText.font = Font.systemFont(sizes.fontSize.tertiary);
+      offlineText.textColor = CONFIG.colors.warning;
+    }
+
     footer.addSpacer();
 
     const updateTime = new Date();
