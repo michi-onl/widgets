@@ -7,10 +7,11 @@
  * Author: Michael Wagner, michi.onl
  *
  * A comprehensive Scriptable widget displaying data from multiple sources
- * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline
+ * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline, books
  *
  * Configuration: Set widget parameter to source name (e.g., "billboard")
  * Timeline supports category filters: "timeline:contributions", "timeline:media"
+ * Books supports ISBN parameter: "books" or "books:9780099518471"
  * or leave empty to use defaultSource from CONFIG
  */
 
@@ -131,6 +132,34 @@ const CONFIG = {
       refreshHours: 1,
       urlScheme: "https://www.michi.onl/",
     },
+    books: {
+      name: "Currently Reading",
+      icon: "book.fill",
+      refreshHours: 24,
+      urlScheme: "goodreads://",
+      // Google Books API (no custom endpoint needed)
+      apiUrl: "https://www.googleapis.com/books/v1/volumes?q=isbn:",
+      // Set your ISBN here or pass as "books:ISBN" widget parameter
+      defaultIsbn: "9780099518471",
+      goodreadsIconUrl:
+        "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/42/d8/cd/42d8cdbf-48df-d1b6-ade9-d972bac7f371/PolarisAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
+    },
+  },
+
+  // Language display mapping for books
+  languageMap: {
+    es: "Spanish 🇪🇸",
+    en: "English 🇺🇸",
+    de: "German 🇩🇪",
+    fr: "French 🇫🇷",
+    it: "Italian 🇮🇹",
+    pt: "Portuguese 🇧🇷",
+    ja: "Japanese 🇯🇵",
+  },
+
+  maturityMap: {
+    NOT_MATURE: "4+",
+    MATURE: "18+",
   },
 };
 
@@ -229,13 +258,17 @@ class ImageCache {
 
 class CacheManager {
   static maxAgeHours = 48; // Maximum cache age for offline fallback
+  static _fm = null;
 
   static getFileManager() {
-    try {
-      return FileManager.iCloud();
-    } catch {
-      return FileManager.local();
+    if (!this._fm) {
+      try {
+        this._fm = FileManager.iCloud();
+      } catch {
+        this._fm = FileManager.local();
+      }
     }
+    return this._fm;
   }
 
   static getCachePath(source) {
@@ -247,7 +280,7 @@ class CacheManager {
     return { fm, path: fm.joinPath(cacheDir, `cache_${source}.json`) };
   }
 
-  static async save(source, data) {
+  static save(source, data) {
     try {
       const { fm, path: cachePath } = this.getCachePath(source);
 
@@ -836,41 +869,24 @@ class HackerNewsDataSource extends DataSource {
     this.addHeader(widget, "Hacker News", sizes);
     widget.addSpacer(sizes.spacing);
 
-    // For medium widgets, use columns to fit more items
+    const contentStack = widget.addStack();
+
+    // For medium widgets, use two columns to fit more items
     if (widgetSize === "medium" && data.stories.length > 3) {
-      const contentStack = widget.addStack();
       contentStack.layoutHorizontally();
+      const mid = Math.ceil(data.stories.length / 2);
 
-      const itemsPerColumn = Math.ceil(data.stories.length / 2);
-
-      // First column
       const firstColumn = contentStack.addStack();
       firstColumn.layoutVertically();
-
-      for (let i = 0; i < itemsPerColumn && i < data.stories.length; i++) {
-        this.renderItem(firstColumn, data.stories[i], sizes);
-        if (i < itemsPerColumn - 1 && i < data.stories.length - 1) {
-          firstColumn.addSpacer(sizes.spacing);
-        }
-      }
+      this.renderItemList(firstColumn, data.stories.slice(0, mid), sizes);
 
       contentStack.addSpacer(sizes.spacing * 2);
 
-      // Second column
       const secondColumn = contentStack.addStack();
       secondColumn.layoutVertically();
-
-      for (let i = itemsPerColumn; i < data.stories.length; i++) {
-        this.renderItem(secondColumn, data.stories[i], sizes);
-        if (i < data.stories.length - 1) {
-          secondColumn.addSpacer(sizes.spacing);
-        }
-      }
+      this.renderItemList(secondColumn, data.stories.slice(mid), sizes);
     } else {
-      // Small or large widget - single column
-      const contentStack = widget.addStack();
       contentStack.layoutVertically();
-
       this.renderItemList(contentStack, data.stories, sizes);
     }
   }
@@ -911,16 +927,14 @@ class GitHubDataSource extends DataSource {
       return { releases: [] };
     }
 
-    const allReleases = response.releases.map((release) => ({
-      repo: this.extractRepoName(release.repo),
-      tagName: this.cleanTagName(release.tagName),
-      timeAgo: release.timeAgo,
-      author: release.author,
-      isPrerelease: release.isPrerelease,
-    }));
-
     return {
-      releases: allReleases.slice(0, limit),
+      releases: response.releases.slice(0, limit).map((release) => ({
+        repo: this.extractRepoName(release.repo),
+        tagName: this.cleanTagName(release.tagName),
+        timeAgo: release.timeAgo,
+        author: release.author,
+        isPrerelease: release.isPrerelease,
+      })),
     };
   }
 
@@ -1097,8 +1111,8 @@ class TimelineDataSource extends DataSource {
     const params = this.category ? { category: this.category } : {};
     const response = await this.api.fetch(this.config.endpoint, params);
 
-    const maxItems = CONFIG.sizing[widgetSize].maxItems;
-    const limit = Math.min(maxItems, widgetSize === "large" ? 8 : widgetSize === "medium" ? 4 : maxItems);
+    const timelineLimits = { small: 3, medium: 4, large: 8 };
+    const limit = timelineLimits[widgetSize] ?? CONFIG.sizing[widgetSize].maxItems;
 
     if (!response || !Array.isArray(response)) {
       return { events: [] };
@@ -1167,6 +1181,141 @@ class TimelineDataSource extends DataSource {
   }
 }
 
+class BooksDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.title;
+  }
+
+  async fetchData(widgetSize) {
+    const isbn = this.isbn || this.config.defaultIsbn;
+    const booksApi = new APIClient(this.config.apiUrl);
+    const response = await booksApi.fetch(isbn);
+
+    if (!response || response.totalItems === 0) {
+      return {};
+    }
+
+    const book = response.items[0].volumeInfo;
+    const thumbnailUrl = book.imageLinks ? book.imageLinks.thumbnail : null;
+
+    const data = {
+      title: book.title || "Unknown Title",
+      authors: book.authors ? book.authors.join(", ") : "Unknown Author",
+      publisher: book.publisher || "Unknown Publisher",
+      publishedDate: book.publishedDate || "Unknown Date",
+      pageCount: book.pageCount || "Unknown",
+      categories: book.categories ? book.categories.join(", ") : "Uncategorized",
+      maturityRating: CONFIG.maturityMap[book.maturityRating] || book.maturityRating,
+      language: CONFIG.languageMap[book.language] || book.language,
+    };
+
+    // Pre-load images in parallel; skip goodreadsIcon on small widget where it isn't shown
+    const [coverImage, goodreadsIcon] = await Promise.all([
+      thumbnailUrl ? ImageCache.load(thumbnailUrl) : Promise.resolve(null),
+      widgetSize !== "small" ? ImageCache.load(this.config.goodreadsIconUrl) : Promise.resolve(null),
+    ]);
+    data.coverImage = coverImage;
+    data.goodreadsIcon = goodreadsIcon;
+
+    return data;
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Currently Reading", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const bodyStack = widget.addStack();
+    bodyStack.layoutHorizontally();
+
+    // Book cover (not on small widget unless no room for info)
+    if (widgetSize !== "small" && data.coverImage) {
+      const coverStack = bodyStack.addStack();
+      coverStack.layoutVertically();
+      coverStack.centerAlignContent();
+
+      const cover = coverStack.addImage(data.coverImage);
+      cover.cornerRadius = 8;
+      cover.centerAlignImage();
+
+      if (widgetSize === "large") {
+        cover.imageSize = new Size(80, 120);
+      } else {
+        cover.imageSize = new Size(60, 90);
+      }
+
+      bodyStack.addSpacer(sizes.spacing * 2);
+    }
+
+    // Book info
+    const infoStack = bodyStack.addStack();
+    infoStack.layoutVertically();
+
+    const titleText = infoStack.addText(FormatUtils.truncate(data.title, 40));
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary + 1);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 2;
+
+    const authorsText = infoStack.addText(data.authors);
+    authorsText.font = Font.mediumSystemFont(sizes.fontSize.secondary);
+    authorsText.textColor = CONFIG.colors.secondary;
+    authorsText.lineLimit = 1;
+
+    if (widgetSize !== "small") {
+      infoStack.addSpacer(sizes.spacing);
+
+      const publisherText = infoStack.addText(
+        `${data.publisher}, ${data.publishedDate}`
+      );
+      publisherText.font = Font.systemFont(sizes.fontSize.tertiary);
+      publisherText.textColor = CONFIG.colors.tertiary;
+      publisherText.lineLimit = 1;
+
+      const detailText = infoStack.addText(
+        `${data.pageCount} Pages · ${data.categories}`
+      );
+      detailText.font = Font.systemFont(sizes.fontSize.tertiary);
+      detailText.textColor = CONFIG.colors.tertiary;
+      detailText.lineLimit = 1;
+
+      const metaText = infoStack.addText(
+        `${data.language} · ${data.maturityRating}`
+      );
+      metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+      metaText.textColor = CONFIG.colors.tertiary;
+    }
+
+    // Small widget: show cover below text
+    if (widgetSize === "small" && data.coverImage) {
+      infoStack.addSpacer(sizes.spacing);
+
+      const coverStack = infoStack.addStack();
+      coverStack.centerAlignContent();
+
+      const cover = coverStack.addImage(data.coverImage);
+      cover.cornerRadius = 6;
+      cover.centerAlignImage();
+      cover.imageSize = new Size(40, 60);
+    }
+
+    bodyStack.addSpacer();
+
+    // Goodreads icon (medium and large)
+    if (widgetSize !== "small" && data.goodreadsIcon) {
+      const iconStack = bodyStack.addStack();
+      iconStack.layoutVertically();
+      iconStack.centerAlignContent();
+
+      const icon = iconStack.addImage(data.goodreadsIcon);
+      icon.cornerRadius = 8;
+      icon.centerAlignImage();
+      icon.imageSize = new Size(25, 25);
+      icon.url = "goodreads://";
+    }
+  }
+}
+
 // ============================================================================
 // DATA SOURCE FACTORY
 // ============================================================================
@@ -1180,14 +1329,15 @@ class DataSourceFactory {
     github: GitHubDataSource,
     wikipedia: WikipediaDataSource,
     timeline: TimelineDataSource,
+    books: BooksDataSource,
   };
 
   static create(sourceName, apiClient) {
     let baseName = sourceName;
-    let category = null;
+    let extra = null;
 
     if (sourceName.includes(":")) {
-      [baseName, category] = sourceName.split(":", 2);
+      [baseName, extra] = sourceName.split(":", 2);
     }
 
     const config = CONFIG.sources[baseName];
@@ -1198,7 +1348,13 @@ class DataSourceFactory {
     }
 
     const instance = new SourceClass(config, apiClient);
-    if (category) instance.category = category;
+    if (extra) {
+      if (baseName === "books") {
+        instance.isbn = extra;
+      } else {
+        instance.category = extra;
+      }
+    }
     return instance;
   }
 }
