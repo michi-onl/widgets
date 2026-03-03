@@ -10,6 +10,7 @@
  * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline
  *
  * Configuration: Set widget parameter to source name (e.g., "billboard")
+ * Timeline supports category filters: "timeline:contributions", "timeline:media"
  * or leave empty to use defaultSource from CONFIG
  */
 
@@ -1000,7 +1001,7 @@ class WikipediaDataSource extends DataSource {
       usernames: usernames,
       tokens: tokens,
       languages: languages,
-      limit: this.config.limit || CONFIG.sizing[widgetSize].maxItems,
+      limit: Math.min(this.config.limit || Infinity, CONFIG.sizing[widgetSize].maxItems),
     };
 
     // Use POST method as required by the API
@@ -1093,9 +1094,11 @@ class TimelineDataSource extends DataSource {
   }
 
   async fetchData(widgetSize) {
-    const response = await this.api.fetch(this.config.endpoint);
+    const params = this.category ? { category: this.category } : {};
+    const response = await this.api.fetch(this.config.endpoint, params);
 
-    const limit = CONFIG.sizing[widgetSize].maxItems;
+    const maxItems = CONFIG.sizing[widgetSize].maxItems;
+    const limit = Math.min(maxItems, widgetSize === "large" ? 8 : widgetSize === "medium" ? 4 : maxItems);
 
     if (!response || !Array.isArray(response)) {
       return { events: [] };
@@ -1114,7 +1117,9 @@ class TimelineDataSource extends DataSource {
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
 
-    this.addHeader(widget, "Timeline", sizes);
+    const headerTitles = { contributions: "Contributions", media: "Media Log" };
+    const title = headerTitles[this.category] || "Timeline";
+    this.addHeader(widget, title, sizes);
     widget.addSpacer(sizes.spacing);
 
     const contentStack = widget.addStack();
@@ -1178,14 +1183,23 @@ class DataSourceFactory {
   };
 
   static create(sourceName, apiClient) {
-    const config = CONFIG.sources[sourceName];
-    const SourceClass = this.sourceMap[sourceName];
+    let baseName = sourceName;
+    let category = null;
+
+    if (sourceName.includes(":")) {
+      [baseName, category] = sourceName.split(":", 2);
+    }
+
+    const config = CONFIG.sources[baseName];
+    const SourceClass = this.sourceMap[baseName];
 
     if (!config || !SourceClass) {
       throw new Error(`Unknown source: ${sourceName}`);
     }
 
-    return new SourceClass(config, apiClient);
+    const instance = new SourceClass(config, apiClient);
+    if (category) instance.category = category;
+    return instance;
   }
 }
 
