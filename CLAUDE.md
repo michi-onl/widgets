@@ -32,7 +32,7 @@ Each data source extends the abstract `DataSource` base class and must implement
 - `isEmpty(data)` — returns true when data has no displayable content
 - `renderWidget(widget, data, widgetSize)` — builds the Scriptable `ListWidget` UI
 
-Implemented sources: `BillboardDataSource`, `IMDbDataSource`, `SteamDataSource`, `HackerNewsDataSource`, `GitHubDataSource`, `WikipediaDataSource`, `TimelineDataSource`, `BooksDataSource`.
+Implemented sources: `BillboardDataSource`, `IMDbDataSource`, `SteamDataSource`, `HackerNewsDataSource`, `GitHubDataSource`, `WikipediaDataSource`, `TimelineDataSource`, `BookmarksDataSource`, `BooksDataSource`.
 
 `DataSourceFactory.create(sourceName, apiClient)` handles the `"source:extra"` parameter syntax (e.g., `"timeline:contributions"`, `"books:9780099518471"`).
 
@@ -56,6 +56,7 @@ Implemented sources: `BillboardDataSource`, `IMDbDataSource`, `SteamDataSource`,
 | `timeline` | Full timeline |
 | `timeline:contributions` | Filtered: contributions only |
 | `timeline:media` | Filtered: media only |
+| `bookmarks` | Recent Linkding bookmarks |
 | `books` | Currently reading (default ISBN) |
 | `books:9780099518471` | Currently reading (specific ISBN) |
 
@@ -64,7 +65,7 @@ Implemented sources: `BillboardDataSource`, `IMDbDataSource`, `SteamDataSource`,
 Edit `CONFIG.sources` at the top of the file:
 - **Steam**: `profiles` array — add Steam usernames
 - **GitHub**: `repos` array — add `"owner/repo"` strings
-- **Wikipedia**: `usernames` and `tokens` strings, or use the in-app setup wizard (run the script directly in Scriptable)
+- **Wikipedia**: `usernames`, `tokens`, and `hours` (1-720), or use the in-app setup wizard (run the script directly in Scriptable)
 - **Books**: `defaultIsbn` — fallback ISBN when none is passed as parameter
 
 ## Scriptable-Specific APIs Used

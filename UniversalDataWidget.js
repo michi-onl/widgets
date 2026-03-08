@@ -7,11 +7,12 @@
  * Author: Michael Wagner, michi.onl
  *
  * A comprehensive Scriptable widget displaying data from multiple sources
- * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline, books
+ * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline, books, bookmarks
  *
  * Configuration: Set widget parameter to source name (e.g., "billboard")
  * Timeline supports category filters: "timeline:contributions", "timeline:media"
  * Books supports ISBN parameter: "books" or "books:9780099518471"
+ * Bookmarks supports tag filter: "bookmarks" or "bookmarks:dev"
  * or leave empty to use defaultSource from CONFIG
  */
 
@@ -124,6 +125,8 @@ const CONFIG = {
       // Languages to check
       languages: "en,de",
       limit: 10,
+      // Hours back to fetch (1-720, API default is 72)
+      hours: 72,
     },
     timeline: {
       name: "Timeline",
@@ -131,6 +134,13 @@ const CONFIG = {
       icon: "clock.arrow.circlepath",
       refreshHours: 1,
       urlScheme: "https://www.michi.onl/",
+    },
+    bookmarks: {
+      name: "Bookmarks",
+      endpoint: "/bookmarks",
+      icon: "bookmark.fill",
+      refreshHours: 1,
+      urlScheme: "https://linkding.michi.onl/",
     },
     books: {
       name: "Currently Reading",
@@ -175,7 +185,7 @@ class APIClient {
 
   async fetch(endpoint, params = {}) {
     const url = this.buildUrl(endpoint, params);
-    console.log(`Fetching: ${url}`);
+    console.log(`Fetching: ${endpoint}`);
 
     const request = new Request(url);
     request.timeoutInterval = this.timeout;
@@ -186,14 +196,14 @@ class APIClient {
       return response;
     } catch (error) {
       console.error(`API Error for ${endpoint}: ${error.message}`);
-      console.error(`URL was: ${url}`);
+      console.error(`URL was: ${endpoint}`);
       throw new Error(`Failed to fetch from ${endpoint}: ${error.message}`);
     }
   }
 
   async post(endpoint, body = {}) {
-    const url = this.baseUrl + endpoint;
-    console.log(`POST: ${url}`);
+    const url = this.buildUrl(endpoint, {});
+    console.log(`POST: ${endpoint}`);
 
     const request = new Request(url);
     request.method = "POST";
@@ -226,7 +236,8 @@ class APIClient {
 
   buildUrl(endpoint, params) {
     let url = this.baseUrl + endpoint;
-    const query = this.encodeParams(params);
+    const merged = { ...params, token: "" };
+    const query = this.encodeParams(merged);
     if (query) url += "?" + query;
     return url;
   }
@@ -455,6 +466,11 @@ class FormatUtils {
       .replace(/\(.*?\)/gi, "")
       .trim();
   }
+
+  static stripHtml(html) {
+    if (!html) return "";
+    return html.replace(/<[^>]*>/g, "").replace(/&[^;]+;/g, " ").replace(/\s+/g, " ").trim();
+  }
 }
 
 // ============================================================================
@@ -665,6 +681,8 @@ class IMDbDataSource extends DataSource {
       title: FormatUtils.truncate(item.title, 30),
       subtitle: `${item.year || "N/A"} • ${item.length || ""}`,
       rating: item.rating,
+      genre: item.genre || "",
+      url: item.href || "",
       type: type,
     };
   }
@@ -704,6 +722,10 @@ class IMDbDataSource extends DataSource {
     itemStack.layoutHorizontally();
     itemStack.centerAlignContent();
 
+    if (item.url) {
+      itemStack.url = item.url;
+    }
+
     // Rating badge
     if (item.rating !== undefined && item.rating !== null) {
       const ratingStack = itemStack.addStack();
@@ -729,9 +751,12 @@ class IMDbDataSource extends DataSource {
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
 
-    const subtitleText = textStack.addText(item.subtitle);
+    const detailParts = [item.subtitle];
+    if (item.genre) detailParts.push(item.genre.split(",")[0]);
+    const subtitleText = textStack.addText(detailParts.join(" • "));
     subtitleText.font = Font.systemFont(sizes.fontSize.tertiary);
     subtitleText.textColor = CONFIG.colors.secondary;
+    subtitleText.lineLimit = 1;
   }
 
   addSectionHeader(stack, title, sizes) {
@@ -753,8 +778,15 @@ class SteamDataSource extends DataSource {
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
     const allGames = [];
+    const profileStatuses = [];
 
     for (const [username, userData] of Object.entries(response)) {
+      profileStatuses.push({
+        name: userData.profileName || username,
+        status: userData.status || "offline",
+        totalGames: userData.totalGames,
+      });
+
       if (userData.recentGames) {
         userData.recentGames.forEach((game) => {
           allGames.push({
@@ -762,6 +794,7 @@ class SteamDataSource extends DataSource {
             hoursPlayed: game.hoursPlayedNumeric || 0,
             lastPlayedShort: game.lastPlayedShort,
             iconUrl: game.iconUrl || null,
+            storeUrl: game.storeUrl || "",
           });
         });
       }
@@ -776,6 +809,7 @@ class SteamDataSource extends DataSource {
 
     return {
       games: games,
+      profiles: profileStatuses,
     };
   }
 
@@ -788,10 +822,42 @@ class SteamDataSource extends DataSource {
     await Promise.all(loadPromises);
   }
 
+  static statusColors = {
+    online: new Color("#34C759"),
+    "in-game": new Color("#34C759"),
+    offline: new Color("#8E8E93"),
+    private: new Color("#FF9500"),
+  };
+
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
 
     this.addHeader(widget, "Recently Played", sizes);
+
+    // Show profile status indicators
+    if (data.profiles && data.profiles.length > 0) {
+      const statusStack = widget.addStack();
+      statusStack.layoutHorizontally();
+      statusStack.centerAlignContent();
+
+      for (const profile of data.profiles) {
+        const dotColor = SteamDataSource.statusColors[profile.status] || CONFIG.colors.secondary;
+        const dot = statusStack.addText("●");
+        dot.font = Font.systemFont(sizes.fontSize.tertiary);
+        dot.textColor = dotColor;
+
+        statusStack.addSpacer(3);
+
+        const statusText = statusStack.addText(
+          `${profile.name} (${profile.status}${profile.totalGames != null ? ` · ${profile.totalGames} games` : ""})`
+        );
+        statusText.font = Font.systemFont(sizes.fontSize.tertiary);
+        statusText.textColor = CONFIG.colors.secondary;
+
+        statusStack.addSpacer(sizes.spacing);
+      }
+    }
+
     widget.addSpacer(sizes.spacing);
 
     const contentStack = widget.addStack();
@@ -804,6 +870,10 @@ class SteamDataSource extends DataSource {
     const itemStack = stack.addStack();
     itemStack.layoutHorizontally();
     itemStack.centerAlignContent();
+
+    if (game.storeUrl) {
+      itemStack.url = game.storeUrl;
+    }
 
     // Use cached game icon or fall back to SF Symbol
     if (game.icon) {
@@ -859,6 +929,8 @@ class HackerNewsDataSource extends DataSource {
         author: story.author,
         timeAgo: story.timePosted,
         url: story.url,
+        domain: story.domain || "",
+        hnUrl: story.hnUrl || "",
       })),
     };
   }
@@ -895,6 +967,10 @@ class HackerNewsDataSource extends DataSource {
     const itemStack = stack.addStack();
     itemStack.layoutVertically();
 
+    if (story.hnUrl) {
+      itemStack.url = story.hnUrl;
+    }
+
     const titleText = itemStack.addText(story.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
@@ -903,12 +979,12 @@ class HackerNewsDataSource extends DataSource {
     const metaStack = itemStack.addStack();
     metaStack.layoutHorizontally();
 
-    // More compact metadata format
-    const metaText = metaStack.addText(
-      `${story.points}pts • ${story.comments}cmt`
-    );
+    const metaParts = [`${story.points}pts • ${story.comments}cmt`];
+    if (story.domain) metaParts.push(story.domain);
+    const metaText = metaStack.addText(metaParts.join(" • "));
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
+    metaText.lineLimit = 1;
   }
 }
 
@@ -930,28 +1006,20 @@ class GitHubDataSource extends DataSource {
     return {
       releases: response.releases.slice(0, limit).map((release) => ({
         repo: this.extractRepoName(release.repo),
-        tagName: this.cleanTagName(release.tagName),
+        tagName: release.tagName,
         timeAgo: release.timeAgo,
         author: release.author,
         isPrerelease: release.isPrerelease,
+        url: release.url || "",
       })),
     };
   }
 
   extractRepoName(repoString) {
-    // Extract repo name from "owner/repo" format
     if (repoString.includes("/")) {
       return repoString.split("/").pop();
     }
     return repoString;
-  }
-
-  cleanTagName(tagName) {
-    // Remove "releases/" prefix if present
-    if (tagName.startsWith("releases/")) {
-      return tagName.substring("releases/".length);
-    }
-    return tagName;
   }
 
   renderWidget(widget, data, widgetSize) {
@@ -968,6 +1036,10 @@ class GitHubDataSource extends DataSource {
   renderItem(stack, release, sizes) {
     const itemStack = stack.addStack();
     itemStack.layoutVertically();
+
+    if (release.url) {
+      itemStack.url = release.url;
+    }
 
     const headerStack = itemStack.addStack();
     headerStack.layoutHorizontally();
@@ -1015,6 +1087,7 @@ class WikipediaDataSource extends DataSource {
       usernames: usernames,
       tokens: tokens,
       languages: languages,
+      hours: this.config.hours || 72,
       limit: Math.min(this.config.limit || Infinity, CONFIG.sizing[widgetSize].maxItems),
     };
 
@@ -1023,7 +1096,7 @@ class WikipediaDataSource extends DataSource {
 
     // Safely handle response
     if (!response || !Array.isArray(response.edits)) {
-      return { edits: [] };
+      return { edits: [], errors: null };
     }
 
     return {
@@ -1032,9 +1105,10 @@ class WikipediaDataSource extends DataSource {
         language: edit.language,
         user: edit.creator,
         timeAgo: edit.timeAgo,
-        comment: FormatUtils.truncate(edit.description || "", 60),
+        comment: FormatUtils.truncate(FormatUtils.stripHtml(edit.description || ""), 60),
         url: edit.link,
       })),
+      errors: response.errors || null,
     };
   }
 
@@ -1042,6 +1116,25 @@ class WikipediaDataSource extends DataSource {
     const sizes = CONFIG.sizing[widgetSize];
 
     this.addHeader(widget, "Recent Edits", sizes);
+
+    // Show error indicator if some languages failed
+    if (data.errors && data.errors.length > 0) {
+      const errorStack = widget.addStack();
+      errorStack.layoutHorizontally();
+      errorStack.centerAlignContent();
+
+      const warnIcon = errorStack.addImage(SFSymbol.named("exclamationmark.triangle.fill").image);
+      warnIcon.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      warnIcon.tintColor = CONFIG.colors.warning;
+
+      errorStack.addSpacer(3);
+
+      const errLangs = data.errors.map((e) => e.language).join(", ");
+      const errText = errorStack.addText(`Failed: ${errLangs}`);
+      errText.font = Font.systemFont(sizes.fontSize.tertiary);
+      errText.textColor = CONFIG.colors.warning;
+    }
+
     widget.addSpacer(sizes.spacing);
 
     const contentStack = widget.addStack();
@@ -1053,6 +1146,10 @@ class WikipediaDataSource extends DataSource {
   renderItem(stack, edit, sizes) {
     const itemStack = stack.addStack();
     itemStack.layoutVertically();
+
+    if (edit.url) {
+      itemStack.url = edit.url;
+    }
 
     const headerStack = itemStack.addStack();
     headerStack.layoutHorizontally();
@@ -1147,6 +1244,10 @@ class TimelineDataSource extends DataSource {
     itemStack.layoutHorizontally();
     itemStack.centerAlignContent();
 
+    if (event.url) {
+      itemStack.url = event.url;
+    }
+
     // Source badge
     const badgeStack = itemStack.addStack();
     badgeStack.backgroundColor =
@@ -1178,6 +1279,83 @@ class TimelineDataSource extends DataSource {
     timeText.textColor = CONFIG.colors.secondary;
 
     itemStack.addSpacer();
+  }
+}
+
+class BookmarksDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.bookmarks || data.bookmarks.length === 0;
+  }
+
+  async fetchData(widgetSize) {
+    const params = this.category ? { tag: this.category } : {};
+    const response = await this.api.fetch(this.config.endpoint, params);
+
+    if (!response || !Array.isArray(response.bookmarks)) {
+      return { bookmarks: [] };
+    }
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+
+    return {
+      bookmarks: response.bookmarks.slice(0, limit).map((b) => ({
+        title: FormatUtils.truncate(b.title || b.url, 45),
+        description: FormatUtils.truncate(b.description || "", 60),
+        tags: b.tags || [],
+        url: b.url,
+        dateAdded: b.date_added,
+      })),
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Bookmarks", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    this.renderItemList(contentStack, data.bookmarks, sizes);
+  }
+
+  renderItem(stack, bookmark, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutVertically();
+
+    if (bookmark.url) {
+      itemStack.url = bookmark.url;
+    }
+
+    const titleText = itemStack.addText(bookmark.title);
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    if (bookmark.description) {
+      const descText = itemStack.addText(bookmark.description);
+      descText.font = Font.systemFont(sizes.fontSize.tertiary);
+      descText.textColor = CONFIG.colors.secondary;
+      descText.lineLimit = 1;
+    }
+
+    const metaStack = itemStack.addStack();
+    metaStack.layoutHorizontally();
+    metaStack.centerAlignContent();
+
+    if (bookmark.tags.length > 0) {
+      const tagsText = metaStack.addText(bookmark.tags.slice(0, 3).join(" · "));
+      tagsText.font = Font.systemFont(sizes.fontSize.tertiary);
+      tagsText.textColor = CONFIG.colors.accent;
+    }
+
+    if (bookmark.dateAdded) {
+      metaStack.addSpacer(sizes.spacing);
+      const timeText = metaStack.addText(FormatUtils.formatTimeAgo(bookmark.dateAdded));
+      timeText.font = Font.systemFont(sizes.fontSize.tertiary);
+      timeText.textColor = CONFIG.colors.tertiary;
+    }
   }
 }
 
@@ -1329,6 +1507,7 @@ class DataSourceFactory {
     github: GitHubDataSource,
     wikipedia: WikipediaDataSource,
     timeline: TimelineDataSource,
+    bookmarks: BookmarksDataSource,
     books: BooksDataSource,
   };
 
