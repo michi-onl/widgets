@@ -68,6 +68,20 @@ const CONFIG = {
     unchanged: Color.dynamic(new Color("#8E8E93"), new Color("#636366")),
 
     white: Color.white(),
+
+    // Steam status indicators (moved from SteamDataSource.statusColors)
+    steamStatus: {
+      online: new Color("#34C759"),
+      "in-game": new Color("#34C759"),
+      offline: new Color("#8E8E93"),
+      private: new Color("#FF9500"),
+    },
+  },
+
+  // Shared design tokens for badges, radii, and spacing
+  designTokens: {
+    cornerRadius: { badge: 4, icon: 3 },
+    badge: { paddingV: 2, paddingH: 4 },
   },
 
   // Source-specific configuration
@@ -495,13 +509,13 @@ class DataSource {
     throw new Error("renderWidget must be implemented by subclass");
   }
 
-  addHeader(widget, title, sizes) {
+  addHeader(widget, title, sizes, options = {}) {
     const headerStack = widget.addStack();
     headerStack.layoutHorizontally();
     headerStack.centerAlignContent();
 
     const icon = headerStack.addImage(SFSymbol.named(this.config.icon).image);
-    icon.imageSize = new Size(sizes.iconSize + 2, sizes.iconSize + 2);
+    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     icon.tintColor = CONFIG.colors.accent;
 
     headerStack.addSpacer(sizes.spacing);
@@ -509,13 +523,53 @@ class DataSource {
     const titleText = headerStack.addText(title);
     titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
+
+    if (options.subtitle) {
+      headerStack.addSpacer(sizes.spacing);
+      const sub = headerStack.addText(options.subtitle);
+      sub.font = Font.systemFont(sizes.fontSize.tertiary);
+      sub.textColor = CONFIG.colors.secondary;
+    }
   }
 
-  renderItemList(stack, items, sizes) {
+  addBadge(parentStack, { text, icon, color, sizes }) {
+    const badge = parentStack.addStack();
+    badge.backgroundColor = color || CONFIG.colors.accent;
+    badge.cornerRadius = CONFIG.designTokens.cornerRadius.badge;
+    badge.setPadding(
+      CONFIG.designTokens.badge.paddingV,
+      CONFIG.designTokens.badge.paddingH,
+      CONFIG.designTokens.badge.paddingV,
+      CONFIG.designTokens.badge.paddingH
+    );
+
+    if (icon) {
+      const img = badge.addImage(SFSymbol.named(icon).image);
+      img.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      img.tintColor = CONFIG.colors.white;
+    } else {
+      const label = badge.addText(text);
+      label.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+      label.textColor = CONFIG.colors.white;
+    }
+
+    return badge;
+  }
+
+  renderItemList(stack, items, sizes, useSeparators = false) {
     items.forEach((item, index) => {
       this.renderItem(stack, item, sizes);
       if (index < items.length - 1) {
         stack.addSpacer(sizes.spacing);
+        if (useSeparators) {
+          const sep = stack.addStack();
+          sep.addSpacer();
+          const line = sep.addStack();
+          line.size = new Size(0, 0.5);
+          line.backgroundColor = CONFIG.colors.tertiary;
+          sep.addSpacer();
+          stack.addSpacer(sizes.spacing);
+        }
       }
     });
   }
@@ -728,17 +782,8 @@ class IMDbDataSource extends DataSource {
 
     // Rating badge
     if (item.rating !== undefined && item.rating !== null) {
-      const ratingStack = itemStack.addStack();
-      ratingStack.backgroundColor = CONFIG.colors.accent;
-      ratingStack.cornerRadius = 4;
-      ratingStack.setPadding(2, 4, 2, 4);
-
-      // Display "+" for empty string, otherwise show the rating
       const displayText = item.rating === "" ? "NEW" : item.rating.toString();
-      const ratingText = ratingStack.addText(displayText);
-      ratingText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
-      ratingText.textColor = CONFIG.colors.white;
-
+      this.addBadge(itemStack, { text: displayText, color: CONFIG.colors.accent, sizes });
       itemStack.addSpacer(sizes.spacing);
     }
 
@@ -760,9 +805,20 @@ class IMDbDataSource extends DataSource {
   }
 
   addSectionHeader(stack, title, sizes) {
-    const headerText = stack.addText(title);
+    const headerStack = stack.addStack();
+    headerStack.layoutHorizontally();
+    headerStack.centerAlignContent();
+
+    const iconName = title === "Movies" ? "film.fill" : "tv.fill";
+    const icon = headerStack.addImage(SFSymbol.named(iconName).image);
+    icon.imageSize = new Size(sizes.fontSize.secondary, sizes.fontSize.secondary);
+    icon.tintColor = CONFIG.colors.secondary;
+    headerStack.addSpacer(sizes.spacing);
+
+    const headerText = headerStack.addText(title);
     headerText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
     headerText.textColor = CONFIG.colors.secondary;
+
     stack.addSpacer(sizes.spacing);
   }
 }
@@ -822,13 +878,6 @@ class SteamDataSource extends DataSource {
     await Promise.all(loadPromises);
   }
 
-  static statusColors = {
-    online: new Color("#34C759"),
-    "in-game": new Color("#34C759"),
-    offline: new Color("#8E8E93"),
-    private: new Color("#FF9500"),
-  };
-
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
 
@@ -841,7 +890,7 @@ class SteamDataSource extends DataSource {
       statusStack.centerAlignContent();
 
       for (const profile of data.profiles) {
-        const dotColor = SteamDataSource.statusColors[profile.status] || CONFIG.colors.secondary;
+        const dotColor = CONFIG.colors.steamStatus[profile.status] || CONFIG.colors.secondary;
         const dot = statusStack.addText("●");
         dot.font = Font.systemFont(sizes.fontSize.tertiary);
         dot.textColor = dotColor;
@@ -879,7 +928,7 @@ class SteamDataSource extends DataSource {
     if (game.icon) {
       const iconImg = itemStack.addImage(game.icon);
       iconImg.imageSize = new Size(sizes.iconSize, sizes.iconSize);
-      iconImg.cornerRadius = 3;
+      iconImg.cornerRadius = CONFIG.designTokens.cornerRadius.icon;
     } else {
       const icon = itemStack.addImage(
         SFSymbol.named("gamecontroller.fill").image
@@ -965,23 +1014,33 @@ class HackerNewsDataSource extends DataSource {
 
   renderItem(stack, story, sizes) {
     const itemStack = stack.addStack();
-    itemStack.layoutVertically();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
 
     if (story.hnUrl) {
       itemStack.url = story.hnUrl;
     }
 
-    const titleText = itemStack.addText(story.title);
+    // Score badge with heat colors
+    const badgeColor = story.points >= 300
+      ? CONFIG.colors.down
+      : story.points >= 100
+      ? CONFIG.colors.warning
+      : CONFIG.colors.secondary;
+    this.addBadge(itemStack, { text: `${story.points}`, color: badgeColor, sizes });
+    itemStack.addSpacer(sizes.spacing);
+
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(story.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 2;
 
-    const metaStack = itemStack.addStack();
-    metaStack.layoutHorizontally();
-
-    const metaParts = [`${story.points}pts • ${story.comments}cmt`];
+    const metaParts = [`${story.comments} comments`];
     if (story.domain) metaParts.push(story.domain);
-    const metaText = metaStack.addText(metaParts.join(" • "));
+    const metaText = textStack.addText(metaParts.join(" · "));
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
     metaText.lineLimit = 1;
@@ -1030,7 +1089,7 @@ class GitHubDataSource extends DataSource {
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    this.renderItemList(contentStack, data.releases, sizes);
+    this.renderItemList(contentStack, data.releases, sizes, true);
   }
 
   renderItem(stack, release, sizes) {
@@ -1154,14 +1213,7 @@ class WikipediaDataSource extends DataSource {
     const headerStack = itemStack.addStack();
     headerStack.layoutHorizontally();
 
-    const langBadge = headerStack.addStack();
-    langBadge.backgroundColor = CONFIG.colors.accent;
-    langBadge.cornerRadius = 3;
-    langBadge.setPadding(2, 4, 2, 4);
-
-    const langText = langBadge.addText(edit.language);
-    langText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
-    langText.textColor = CONFIG.colors.white;
+    this.addBadge(headerStack, { text: edit.language, sizes });
 
     headerStack.addSpacer(sizes.spacing);
 
@@ -1249,17 +1301,11 @@ class TimelineDataSource extends DataSource {
     }
 
     // Source badge
-    const badgeStack = itemStack.addStack();
-    badgeStack.backgroundColor =
-      TimelineDataSource.sourceColors[event.source] || CONFIG.colors.accent;
-    badgeStack.cornerRadius = 4;
-    badgeStack.setPadding(2, 4, 2, 4);
-
     const sourceIcon =
       TimelineDataSource.sourceIcons[event.source] || "questionmark.circle";
-    const iconImg = badgeStack.addImage(SFSymbol.named(sourceIcon).image);
-    iconImg.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
-    iconImg.tintColor = CONFIG.colors.white;
+    const sourceColor =
+      TimelineDataSource.sourceColors[event.source] || CONFIG.colors.accent;
+    this.addBadge(itemStack, { icon: sourceIcon, color: sourceColor, sizes });
 
     itemStack.addSpacer(sizes.spacing);
 
@@ -1311,13 +1357,14 @@ class BookmarksDataSource extends DataSource {
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
 
-    this.addHeader(widget, "Bookmarks", sizes);
+    const headerOptions = this.category ? { subtitle: this.category } : {};
+    this.addHeader(widget, "Bookmarks", sizes, headerOptions);
     widget.addSpacer(sizes.spacing);
 
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    this.renderItemList(contentStack, data.bookmarks, sizes);
+    this.renderItemList(contentStack, data.bookmarks, sizes, true);
   }
 
   renderItem(stack, bookmark, sizes) {
@@ -1431,7 +1478,7 @@ class BooksDataSource extends DataSource {
     infoStack.layoutVertically();
 
     const titleText = infoStack.addText(FormatUtils.truncate(data.title, 40));
-    titleText.font = Font.boldSystemFont(sizes.fontSize.primary + 1);
+    titleText.font = Font.boldSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 2;
 
@@ -1550,9 +1597,8 @@ class UniversalWidget {
   }
 
   async run() {
+    const widgetSize = config.widgetFamily || "medium";
     try {
-      const widgetSize = config.widgetFamily || "medium";
-
       // When running in app (not widget), offer credential setup
       if (!config.runsInWidget && this.sourceName === "wikipedia") {
         if (!CredentialManager.hasCredentials("wikipedia")) {
@@ -1580,7 +1626,7 @@ class UniversalWidget {
       Script.complete();
     } catch (error) {
       console.error("Widget error:", error);
-      const errorWidget = this.createErrorWidget(error.message);
+      const errorWidget = this.createErrorWidget(error.message, widgetSize);
       Script.setWidget(errorWidget);
       Script.complete();
     }
@@ -1630,27 +1676,30 @@ class UniversalWidget {
         usingCache = true;
         console.log(`Using cached data (${cached.ageHours.toFixed(1)}h old)`);
       } else {
-        return this.createErrorWidget(error.message);
+        return this.createErrorWidget(error.message, widgetSize);
       }
     }
 
     if (!data || this.dataSource.isEmpty(data)) {
-      return this.createErrorWidget("No data available");
+      return this.createErrorWidget("No data available", widgetSize);
     }
 
     this.dataSource.renderWidget(widget, data, widgetSize);
 
-    // Add update indicator for large widgets
-    if (widgetSize === "large") {
-      this.addFooter(widget, sizes, usingCache);
+    // Add update indicator for medium and large widgets
+    if (widgetSize !== "small") {
+      this.addFooter(widget, sizes, usingCache, widgetSize);
+    } else {
+      widget.addSpacer();
     }
 
     return widget;
   }
 
-  createErrorWidget(message) {
+  createErrorWidget(message, widgetSize = "medium") {
     const widget = new ListWidget();
-    const sizes = CONFIG.sizing["medium"];
+    const sizes = CONFIG.sizing[widgetSize];
+    const iconSizes = { small: 24, medium: 32, large: 40 };
 
     widget.setPadding(
       sizes.padding,
@@ -1666,27 +1715,30 @@ class UniversalWidget {
     const icon = stack.addImage(
       SFSymbol.named("exclamationmark.triangle").image
     );
-    icon.imageSize = new Size(32, 32);
+    icon.imageSize = new Size(iconSizes[widgetSize] || 32, iconSizes[widgetSize] || 32);
     icon.tintColor = CONFIG.colors.warning;
 
-    stack.addSpacer(8);
+    stack.addSpacer(sizes.spacing);
 
-    const errorText = stack.addText("Error");
-    errorText.font = Font.boldSystemFont(14);
+    const sourceName = this.sourceName || "Widget";
+    const errorText = stack.addText(`${sourceName} Error`);
+    errorText.font = Font.boldSystemFont(sizes.fontSize.primary);
     errorText.textColor = CONFIG.colors.primary;
     errorText.centerAlignText();
 
-    stack.addSpacer(4);
+    if (widgetSize !== "small") {
+      stack.addSpacer(4);
 
-    const messageText = stack.addText(message);
-    messageText.font = Font.systemFont(11);
-    messageText.textColor = CONFIG.colors.secondary;
-    messageText.centerAlignText();
+      const messageText = stack.addText(message);
+      messageText.font = Font.systemFont(sizes.fontSize.tertiary);
+      messageText.textColor = CONFIG.colors.secondary;
+      messageText.centerAlignText();
+    }
 
     return widget;
   }
 
-  addFooter(widget, sizes, usingCache = false) {
+  addFooter(widget, sizes, usingCache = false, widgetSize = "large") {
     widget.addSpacer();
 
     const footer = widget.addStack();
@@ -1698,23 +1750,24 @@ class UniversalWidget {
       offlineIcon.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
       offlineIcon.tintColor = CONFIG.colors.warning;
 
-      footer.addSpacer(4);
+      // Full "Offline" label only on large; medium keeps it icon-only
+      if (widgetSize === "large") {
+        footer.addSpacer(4);
 
-      const offlineText = footer.addText("Offline");
-      offlineText.font = Font.systemFont(sizes.fontSize.tertiary);
-      offlineText.textColor = CONFIG.colors.warning;
+        const offlineText = footer.addText("Offline");
+        offlineText.font = Font.systemFont(sizes.fontSize.tertiary);
+        offlineText.textColor = CONFIG.colors.warning;
+      }
     }
 
     footer.addSpacer();
 
     const updateTime = new Date();
-    const timeString = `Updated ${updateTime
-      .getHours()
-      .toString()
-      .padStart(2, "0")}:${updateTime
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}`;
+    const hours = updateTime.getHours().toString().padStart(2, "0");
+    const minutes = updateTime.getMinutes().toString().padStart(2, "0");
+    const timeString = widgetSize === "large"
+      ? `Updated ${hours}:${minutes}`
+      : `${hours}:${minutes}`;
 
     const timeText = footer.addText(timeString);
     timeText.font = Font.systemFont(sizes.fontSize.tertiary);

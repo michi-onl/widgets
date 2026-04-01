@@ -10,7 +10,7 @@ iOS/macOS widgets for the [Scriptable](https://scriptable.app/) app. The entire 
 
 ## Architecture
 
-The widget is structured as a class hierarchy inside one file (~1565 lines):
+The widget is structured as a class hierarchy inside one file (~1744 lines):
 
 ### Configuration (`CONFIG` object, top of file)
 - `defaultSource` — which data source to use if no widget parameter is set
@@ -71,3 +71,13 @@ Edit `CONFIG.sources` at the top of the file:
 ## Scriptable-Specific APIs Used
 
 The file relies on Scriptable globals (`ListWidget`, `Stack`, `SFSymbol`, `Font`, `Color`, `Request`, `FileManager`, `Keychain`, `Script`, `config`, `args`). These are not available outside of Scriptable — the file cannot be linted or executed in a standard Node.js environment.
+
+## Design Conventions
+
+- **Design tokens** live in `CONFIG.designTokens` (badge corner radius, padding). Use these instead of hardcoded values when adding badges or rounded-rect UI elements.
+- **Badges** should use `DataSource.addBadge()` for colored rounded-rect labels (text or SF Symbol). Exception: plain styled text labels (like GitHub pre-release) are not badges and should stay inline.
+- **`addHeader()`** accepts an optional `options` object with `subtitle` for filtered views. Do not add item counts to headers — the API responses don't carry totals.
+- **Footers** show on medium (compact, time only) and large (time + offline text). Small widgets have no footer.
+- **Error widget** is size-aware. Always pass `widgetSize` to `createErrorWidget()`.
+- **Separators** (`renderItemList` with `useSeparators = true`) are for text-heavy list widgets without visual anchors. Avoid in multi-column layouts (e.g. HackerNews medium).
+- Keep `TimelineDataSource.sourceIcons` and `sourceColors` as static class properties. They map internal source types, not user config.
