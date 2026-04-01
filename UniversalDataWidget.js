@@ -67,6 +67,8 @@ const CONFIG = {
     down: new Color("#FF3B30"),
     unchanged: Color.dynamic(new Color("#8E8E93"), new Color("#636366")),
 
+    sunset: new Color("#FF6B35"),
+    golden: new Color("#FFD700"),
     white: Color.white(),
 
     // Steam status indicators (moved from SteamDataSource.statusColors)
@@ -106,7 +108,6 @@ const CONFIG = {
       icon: "gamecontroller.fill",
       refreshHours: 6,
       urlScheme: "steam://",
-      // Add your Steam profile names here
       profiles: ["exampleuser1", "exampleuser2"],
     },
     hackernews: {
@@ -122,7 +123,6 @@ const CONFIG = {
       icon: "arrow.down.circle",
       refreshHours: 6,
       urlScheme: "https://github.com/",
-      // Add repositories to track (format: "owner/repo")
       repos: ["zen-browser/desktop", "wikimedia/wikipedia-ios"],
     },
     wikipedia: {
@@ -131,15 +131,10 @@ const CONFIG = {
       icon: "book.fill",
       refreshHours: 2,
       urlScheme: "https://wikipedia.org/",
-      // Configure Wikipedia watchlist credentials
-      // Format: "lang:username" for each language
       usernames: "",
-      // Format: "lang:token" for each language
       tokens: "",
-      // Languages to check
       languages: "en,de",
       limit: 10,
-      // Hours back to fetch (1-720, API default is 72)
       hours: 72,
     },
     timeline: {
@@ -156,14 +151,34 @@ const CONFIG = {
       refreshHours: 1,
       urlScheme: "https://linkding.michi.onl/",
     },
+    astronomy: {
+      name: "Astronomy",
+      icon: "moon.stars.fill",
+      refreshHours: 1,
+      urlScheme: "weather://",
+      latitude: "",
+      longitude: "",
+    },
+    bluesky: {
+      name: "Bluesky",
+      icon: "bubble.left.fill",
+      refreshHours: 1,
+      urlScheme: "https://bsky.app/",
+      handle: "",
+    },
+    statusboard: {
+      name: "Status Board",
+      icon: "square.grid.2x2.fill",
+      refreshHours: 1,
+      urlScheme: "",
+      boardSources: ["hackernews", "github", "billboard", "bookmarks"],
+    },
     books: {
       name: "Currently Reading",
       icon: "book.fill",
       refreshHours: 24,
       urlScheme: "goodreads://",
-      // Google Books API (no custom endpoint needed)
       apiUrl: "https://www.googleapis.com/books/v1/volumes?q=isbn:",
-      // Set your ISBN here or pass as "books:ISBN" widget parameter
       defaultIsbn: "9780099518471",
       goodreadsIconUrl:
         "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/42/d8/cd/42d8cdbf-48df-d1b6-ade9-d972bac7f371/PolarisAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
@@ -250,10 +265,13 @@ class APIClient {
 
   buildUrl(endpoint, params) {
     let url = this.baseUrl + endpoint;
-    const merged = { ...params, token: "" };
-    const query = this.encodeParams(merged);
-    if (query) url += "?" + query;
-    return url;
+    // Filter out empty values to avoid appending ?token= to external APIs
+    const filtered = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+    );
+    if (Object.keys(filtered).length === 0) return url;
+    const separator = url.includes("?") ? "&" : "?";
+    return url + separator + this.encodeParams(filtered);
   }
 }
 
@@ -309,6 +327,14 @@ class CacheManager {
     try {
       const { fm, path: cachePath } = this.getCachePath(source);
 
+      if (fm.fileExists(cachePath)) {
+        const prevPath = fm.joinPath(fm.joinPath(fm.documentsDirectory(), "widget-cache"), `previous_${source}.json`);
+        try {
+          const existing = fm.readString(cachePath);
+          fm.writeString(prevPath, existing);
+        } catch { /* ignore copy failures */ }
+      }
+
       const cacheData = {
         timestamp: Date.now(),
         data: data,
@@ -318,6 +344,25 @@ class CacheManager {
       console.log(`Cache saved for ${source}`);
     } catch (error) {
       console.error(`Failed to save cache for ${source}: ${error.message}`);
+    }
+  }
+
+  static async loadPrevious(source) {
+    try {
+      const fm = this.getFileManager();
+      const prevPath = fm.joinPath(fm.joinPath(fm.documentsDirectory(), "widget-cache"), `previous_${source}.json`);
+
+      if (!fm.fileExists(prevPath)) return null;
+
+      if (fm.isFileStoredIniCloud && fm.isFileStoredIniCloud(prevPath)) {
+        await fm.downloadFileFromiCloud(prevPath);
+      }
+
+      const content = fm.readString(prevPath);
+      const parsed = JSON.parse(content);
+      return parsed.data || null;
+    } catch {
+      return null;
     }
   }
 
@@ -354,6 +399,198 @@ class CacheManager {
       console.error(`Failed to load cache for ${source}: ${error.message}`);
       return null;
     }
+  }
+}
+
+class RefreshManager {
+  static statsFile = "refresh_stats.json";
+
+  static getStatsPath() {
+    const fm = CacheManager.getFileManager();
+    const cacheDir = fm.joinPath(fm.documentsDirectory(), "widget-cache");
+    if (!fm.fileExists(cacheDir)) fm.createDirectory(cacheDir);
+    return { fm, path: fm.joinPath(cacheDir, this.statsFile) };
+  }
+
+  static loadStats() {
+    try {
+      const { fm, path } = this.getStatsPath();
+      if (!fm.fileExists(path)) return {};
+      return JSON.parse(fm.readString(path));
+    } catch {
+      return {};
+    }
+  }
+
+  static saveStats(stats) {
+    try {
+      const { fm, path } = this.getStatsPath();
+      fm.writeString(path, JSON.stringify(stats));
+    } catch { /* ignore */ }
+  }
+
+  static recordSuccess(source) {
+    const stats = this.loadStats();
+    stats[source] = {
+      lastFetchTime: Date.now(),
+      consecutiveErrors: 0,
+    };
+    this.saveStats(stats);
+  }
+
+  static recordError(source) {
+    const stats = this.loadStats();
+    const prev = stats[source] || {};
+    stats[source] = {
+      lastFetchTime: prev.lastFetchTime || null,
+      consecutiveErrors: (prev.consecutiveErrors || 0) + 1,
+    };
+    this.saveStats(stats);
+  }
+
+  static getRefreshInterval(source) {
+    const baseHours = CONFIG.sources[source]?.refreshHours || 1;
+    const baseMs = baseHours * 60 * 60 * 1000;
+    const stats = this.loadStats();
+    const sourceStats = stats[source];
+
+    if (!sourceStats || !sourceStats.consecutiveErrors) {
+      return baseMs;
+    }
+
+    // Exponential backoff: 2^errors, capped at 8x
+    const multiplier = Math.min(Math.pow(2, sourceStats.consecutiveErrors), 8);
+    const maxMs = 48 * 60 * 60 * 1000;
+    return Math.min(baseMs * multiplier, maxMs);
+  }
+}
+
+class ConfigManager {
+  static configFile = "widget-config.json";
+  static _loaded = false;
+
+  static getConfigPath() {
+    const fm = CacheManager.getFileManager();
+    return { fm, path: fm.joinPath(fm.documentsDirectory(), this.configFile) };
+  }
+
+  static async load() {
+    if (this._loaded) return;
+    this._loaded = true;
+
+    try {
+      const { fm, path } = this.getConfigPath();
+      if (!fm.fileExists(path)) return;
+
+      if (fm.isFileStoredIniCloud && fm.isFileStoredIniCloud(path)) {
+        await fm.downloadFileFromiCloud(path);
+      }
+
+      const content = fm.readString(path);
+      const saved = JSON.parse(content);
+
+      if (!saved || !saved.sources) return;
+
+      // Deep merge saved config into CONFIG.sources
+      for (const [sourceName, sourceConfig] of Object.entries(saved.sources)) {
+        if (CONFIG.sources[sourceName]) {
+          Object.assign(CONFIG.sources[sourceName], sourceConfig);
+        }
+      }
+
+      console.log("iCloud config loaded and merged");
+    } catch (error) {
+      console.error(`Failed to load iCloud config: ${error.message}`);
+    }
+  }
+
+  static save(sourceOverrides) {
+    try {
+      const { fm, path } = this.getConfigPath();
+      let existing = { version: 1, lastModified: 0, sources: {} };
+
+      if (fm.fileExists(path)) {
+        try {
+          existing = JSON.parse(fm.readString(path));
+        } catch { /* start fresh */ }
+      }
+
+      // Merge new overrides into existing saved config
+      for (const [sourceName, sourceConfig] of Object.entries(sourceOverrides)) {
+        existing.sources[sourceName] = {
+          ...(existing.sources[sourceName] || {}),
+          ...sourceConfig,
+        };
+      }
+
+      existing.version = 1;
+      existing.lastModified = Date.now();
+
+      fm.writeString(path, JSON.stringify(existing, null, 2));
+      console.log("iCloud config saved");
+    } catch (error) {
+      console.error(`Failed to save iCloud config: ${error.message}`);
+    }
+  }
+
+  static async showSetupUI(sourceName) {
+    const config = CONFIG.sources[sourceName];
+    if (!config) return false;
+
+    const alert = new Alert();
+    alert.title = `Configure ${config.name}`;
+
+    const editableFields = this.getEditableFields(sourceName);
+    if (editableFields.length === 0) {
+      alert.message = "No configurable settings for this source.";
+      alert.addAction("OK");
+      await alert.presentAlert();
+      return false;
+    }
+
+    alert.message = "Edit settings below. Changes sync across devices via iCloud.";
+    for (const field of editableFields) {
+      const currentValue = config[field.key];
+      const displayValue = Array.isArray(currentValue) ? currentValue.join(", ") : (currentValue || "");
+      alert.addTextField(field.label, displayValue);
+    }
+
+    alert.addAction("Save");
+    alert.addCancelAction("Cancel");
+
+    const result = await alert.presentAlert();
+    if (result === -1) return false;
+
+    const overrides = {};
+    editableFields.forEach((field, index) => {
+      const value = alert.textFieldValue(index);
+      if (field.isArray) {
+        overrides[field.key] = value.split(",").map((s) => s.trim()).filter(Boolean);
+      } else {
+        overrides[field.key] = value;
+      }
+    });
+
+    this.save({ [sourceName]: overrides });
+
+    // Apply immediately to current CONFIG
+    Object.assign(CONFIG.sources[sourceName], overrides);
+    return true;
+  }
+
+  static getEditableFields(sourceName) {
+    const fieldMap = {
+      steam: [{ key: "profiles", label: "Steam profiles (comma-separated)", isArray: true }],
+      github: [{ key: "repos", label: "Repos: owner/repo (comma-separated)", isArray: true }],
+      bluesky: [{ key: "handle", label: "Bluesky handle" }],
+      astronomy: [
+        { key: "latitude", label: "Latitude" },
+        { key: "longitude", label: "Longitude" },
+      ],
+      statusboard: [{ key: "boardSources", label: "Sources (comma-separated)", isArray: true }],
+      books: [{ key: "defaultIsbn", label: "Default ISBN" }],
+    };
+    return fieldMap[sourceName] || [];
   }
 }
 
@@ -554,6 +791,38 @@ class DataSource {
     }
 
     return badge;
+  }
+
+  addNewDot(stack, item, sizes) {
+    if (!item._isNew) return;
+    const dot = stack.addText("●");
+    dot.font = Font.systemFont(sizes.fontSize.tertiary);
+    dot.textColor = CONFIG.colors.up;
+    stack.addSpacer(3);
+  }
+
+  getItemKey(item) {
+    return null;
+  }
+
+  getItemsFromData(data) {
+    return null;
+  }
+
+  markNewItems(data, previousData) {
+    const items = this.getItemsFromData(data);
+    const prevItems = this.getItemsFromData(previousData);
+    if (!items || !prevItems) return;
+
+    const prevKeys = new Set(prevItems.map((i) => this.getItemKey(i)).filter(Boolean));
+    if (prevKeys.size === 0) return;
+
+    for (const item of items) {
+      const key = this.getItemKey(item);
+      if (key && !prevKeys.has(key)) {
+        item._isNew = true;
+      }
+    }
   }
 
   renderItemList(stack, items, sizes, useSeparators = false) {
@@ -964,6 +1233,9 @@ class HackerNewsDataSource extends DataSource {
     return !data.stories || data.stories.length === 0;
   }
 
+  getItemKey(item) { return item.hnUrl; }
+  getItemsFromData(data) { return data?.stories; }
+
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
@@ -1030,6 +1302,8 @@ class HackerNewsDataSource extends DataSource {
     this.addBadge(itemStack, { text: `${story.points}`, color: badgeColor, sizes });
     itemStack.addSpacer(sizes.spacing);
 
+    this.addNewDot(itemStack, story, sizes);
+
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
@@ -1051,6 +1325,9 @@ class GitHubDataSource extends DataSource {
   isEmpty(data) {
     return !data.releases || data.releases.length === 0;
   }
+
+  getItemKey(item) { return `${item.repoName}:${item.tagName}`; }
+  getItemsFromData(data) { return data?.releases; }
 
   async fetchData(widgetSize) {
     const repos = this.config.repos.join(",");
@@ -1103,6 +1380,8 @@ class GitHubDataSource extends DataSource {
     const headerStack = itemStack.addStack();
     headerStack.layoutHorizontally();
 
+    this.addNewDot(headerStack, release, sizes);
+
     const repoText = headerStack.addText(release.repo);
     repoText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
     repoText.textColor = CONFIG.colors.accent;
@@ -1132,6 +1411,9 @@ class WikipediaDataSource extends DataSource {
   isEmpty(data) {
     return !data.edits || data.edits.length === 0;
   }
+
+  getItemKey(item) { return `${item.language}:${item.title}:${item.timestamp}`; }
+  getItemsFromData(data) { return data?.edits; }
 
   async fetchData(widgetSize) {
     // Load credentials from Keychain with fallback to config
@@ -1217,6 +1499,8 @@ class WikipediaDataSource extends DataSource {
 
     headerStack.addSpacer(sizes.spacing);
 
+    this.addNewDot(headerStack, edit, sizes);
+
     const titleText = headerStack.addText(edit.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
@@ -1255,6 +1539,9 @@ class TimelineDataSource extends DataSource {
   isEmpty(data) {
     return !data.events || data.events.length === 0;
   }
+
+  getItemKey(item) { return `${item.source}:${item.title}:${item.date}`; }
+  getItemsFromData(data) { return data?.events; }
 
   async fetchData(widgetSize) {
     const params = this.category ? { category: this.category } : {};
@@ -1309,6 +1596,8 @@ class TimelineDataSource extends DataSource {
 
     itemStack.addSpacer(sizes.spacing);
 
+    this.addNewDot(itemStack, event, sizes);
+
     // Text content
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
@@ -1332,6 +1621,9 @@ class BookmarksDataSource extends DataSource {
   isEmpty(data) {
     return !data.bookmarks || data.bookmarks.length === 0;
   }
+
+  getItemKey(item) { return item.url; }
+  getItemsFromData(data) { return data?.bookmarks; }
 
   async fetchData(widgetSize) {
     const params = this.category ? { tag: this.category } : {};
@@ -1375,7 +1667,13 @@ class BookmarksDataSource extends DataSource {
       itemStack.url = bookmark.url;
     }
 
-    const titleText = itemStack.addText(bookmark.title);
+    const titleRow = itemStack.addStack();
+    titleRow.layoutHorizontally();
+    titleRow.centerAlignContent();
+
+    this.addNewDot(titleRow, bookmark, sizes);
+
+    const titleText = titleRow.addText(bookmark.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
@@ -1541,6 +1839,449 @@ class BooksDataSource extends DataSource {
   }
 }
 
+class AstronomyDataSource extends DataSource {
+  static moonPhases = [
+    { name: "New Moon", icon: "moonphase.new.moon" },
+    { name: "Waxing Crescent", icon: "moonphase.waxing.crescent" },
+    { name: "First Quarter", icon: "moonphase.first.quarter" },
+    { name: "Waxing Gibbous", icon: "moonphase.waxing.gibbous" },
+    { name: "Full Moon", icon: "moonphase.full.moon" },
+    { name: "Waning Gibbous", icon: "moonphase.waning.gibbous" },
+    { name: "Last Quarter", icon: "moonphase.last.quarter" },
+    { name: "Waning Crescent", icon: "moonphase.waning.crescent" },
+  ];
+
+  async getLocation() {
+    // Try configured coordinates first
+    if (this.config.latitude && this.config.longitude) {
+      return { latitude: parseFloat(this.config.latitude), longitude: parseFloat(this.config.longitude) };
+    }
+
+    // Try cached location
+    const cached = await CacheManager.load("_location");
+    if (cached && cached.data) {
+      return cached.data;
+    }
+
+    // Request device location
+    const location = await Location.current();
+    const coords = { latitude: location.latitude, longitude: location.longitude };
+    CacheManager.save("_location", coords);
+    return coords;
+  }
+
+  async fetchData(widgetSize) {
+    const loc = await this.getLocation();
+    const lat = loc.latitude;
+    const lon = loc.longitude;
+
+    const weatherApi = new APIClient(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset,uv_index_max&current=temperature_2m,weather_code&timezone=auto`
+    );
+    const weather = await weatherApi.fetch("");
+
+    if (!weather || !weather.daily) {
+      return {};
+    }
+
+    const daily = weather.daily;
+    const sunrise = daily.sunrise[0];
+    const sunset = daily.sunset[0];
+
+    // Calculate golden hours (30min window around sunrise/sunset)
+    const sunriseDate = new Date(sunrise);
+    const sunsetDate = new Date(sunset);
+    const goldenMorningStart = new Date(sunriseDate.getTime() - 30 * 60000);
+    const goldenMorningEnd = new Date(sunriseDate.getTime() + 30 * 60000);
+    const goldenEveningStart = new Date(sunsetDate.getTime() - 30 * 60000);
+    const goldenEveningEnd = new Date(sunsetDate.getTime() + 30 * 60000);
+
+    // Moon phase: calculate from date (0-1 scale, synodic month)
+    const moonPhase = this.calculateMoonPhase(new Date());
+
+    return {
+      sunrise,
+      sunset,
+      uvIndex: daily.uv_index_max[0],
+      temperature: weather.current?.temperature_2m,
+      weatherCode: weather.current?.weather_code,
+      moonPhase,
+      goldenMorning: { start: goldenMorningStart, end: goldenMorningEnd },
+      goldenEvening: { start: goldenEveningStart, end: goldenEveningEnd },
+    };
+  }
+
+  calculateMoonPhase(date) {
+    // Simplified moon phase calculation based on known new moon reference
+    const knownNewMoon = new Date("2024-01-11T11:57:00Z");
+    const synodicMonth = 29.53058770576;
+    const daysSince = (date - knownNewMoon) / (1000 * 60 * 60 * 24);
+    const phase = ((daysSince % synodicMonth) + synodicMonth) % synodicMonth;
+    return phase / synodicMonth; // 0-1 scale
+  }
+
+  getMoonPhaseInfo(phase) {
+    const index = Math.round(phase * 8) % 8;
+    return AstronomyDataSource.moonPhases[index];
+  }
+
+  formatTime(dateOrString) {
+    const d = dateOrString instanceof Date ? dateOrString : new Date(dateOrString);
+    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  }
+
+  isEmpty(data) {
+    return !data || !data.sunrise;
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Astronomy", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    // Sun row
+    this.renderSunRow(contentStack, data, sizes);
+    contentStack.addSpacer(sizes.spacing);
+
+    // Moon row
+    this.renderMoonRow(contentStack, data, sizes);
+
+    if (widgetSize !== "small") {
+      contentStack.addSpacer(sizes.spacing);
+      // UV index row
+      this.renderUvRow(contentStack, data, sizes);
+      contentStack.addSpacer(sizes.spacing);
+      // Golden hour row
+      this.renderGoldenHourRow(contentStack, data, sizes);
+    }
+
+    if (widgetSize === "large") {
+      contentStack.addSpacer(sizes.spacing);
+      this.renderTemperatureRow(contentStack, data, sizes);
+    }
+  }
+
+  renderSunRow(stack, data, sizes) {
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    const sunriseIcon = row.addImage(SFSymbol.named("sunrise.fill").image);
+    sunriseIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    sunriseIcon.tintColor = CONFIG.colors.warning;
+    row.addSpacer(4);
+
+    const sunriseText = row.addText(this.formatTime(data.sunrise));
+    sunriseText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    sunriseText.textColor = CONFIG.colors.primary;
+
+    row.addSpacer(sizes.spacing * 2);
+
+    const sunsetIcon = row.addImage(SFSymbol.named("sunset.fill").image);
+    sunsetIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    sunsetIcon.tintColor = CONFIG.colors.sunset;
+    row.addSpacer(4);
+
+    const sunsetText = row.addText(this.formatTime(data.sunset));
+    sunsetText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    sunsetText.textColor = CONFIG.colors.primary;
+  }
+
+  renderMoonRow(stack, data, sizes) {
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    const moonInfo = this.getMoonPhaseInfo(data.moonPhase);
+    const moonIcon = row.addImage(SFSymbol.named(moonInfo.icon).image);
+    moonIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    moonIcon.tintColor = CONFIG.colors.primary;
+    row.addSpacer(4);
+
+    const moonText = row.addText(moonInfo.name);
+    moonText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    moonText.textColor = CONFIG.colors.primary;
+
+    row.addSpacer(sizes.spacing);
+
+    const pctText = row.addText(`${Math.round(data.moonPhase * 100)}%`);
+    pctText.font = Font.systemFont(sizes.fontSize.tertiary);
+    pctText.textColor = CONFIG.colors.secondary;
+  }
+
+  renderUvRow(stack, data, sizes) {
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    const uvIcon = row.addImage(SFSymbol.named("sun.max.fill").image);
+    uvIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    uvIcon.tintColor = CONFIG.colors.warning;
+    row.addSpacer(4);
+
+    const label = row.addText("UV Index");
+    label.font = Font.systemFont(sizes.fontSize.secondary);
+    label.textColor = CONFIG.colors.secondary;
+    row.addSpacer(sizes.spacing);
+
+    const uvValue = Math.round(data.uvIndex);
+    const uvColor = uvValue >= 6 ? CONFIG.colors.down : uvValue >= 3 ? CONFIG.colors.warning : CONFIG.colors.up;
+    this.addBadge(row, { text: `${uvValue}`, color: uvColor, sizes });
+  }
+
+  renderGoldenHourRow(stack, data, sizes) {
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    const ghIcon = row.addImage(SFSymbol.named("camera.filters").image);
+    ghIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    ghIcon.tintColor = CONFIG.colors.golden;
+    row.addSpacer(4);
+
+    const morningText = `${this.formatTime(data.goldenMorning.start)}–${this.formatTime(data.goldenMorning.end)}`;
+    const eveningText = `${this.formatTime(data.goldenEvening.start)}–${this.formatTime(data.goldenEvening.end)}`;
+
+    const text = row.addText(`${morningText}  ${eveningText}`);
+    text.font = Font.systemFont(sizes.fontSize.secondary);
+    text.textColor = CONFIG.colors.primary;
+  }
+
+  renderTemperatureRow(stack, data, sizes) {
+    if (data.temperature === undefined) return;
+
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    const tempIcon = row.addImage(SFSymbol.named("thermometer.medium").image);
+    tempIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    tempIcon.tintColor = CONFIG.colors.accent;
+    row.addSpacer(4);
+
+    const tempText = row.addText(`${Math.round(data.temperature)}°C`);
+    tempText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    tempText.textColor = CONFIG.colors.primary;
+  }
+}
+
+class BlueskyDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const handle = this.config.handle;
+    if (!handle) {
+      throw new Error("Set bluesky handle in CONFIG");
+    }
+
+    const sizes = CONFIG.sizing[widgetSize];
+    const limit = sizes.maxItems;
+
+    const bskyApi = new APIClient(
+      `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=${limit}&filter=posts_no_replies`
+    );
+    const response = await bskyApi.fetch("");
+
+    if (!response || !response.feed) {
+      return { posts: [] };
+    }
+
+    const posts = response.feed.map((item) => {
+      const post = item.post;
+      return {
+        text: post.record?.text || "",
+        author: post.author?.displayName || post.author?.handle || "",
+        handle: post.author?.handle || "",
+        createdAt: post.record?.createdAt || post.indexedAt,
+        likes: post.likeCount || 0,
+        reposts: post.repostCount || 0,
+        replies: post.replyCount || 0,
+        url: `https://bsky.app/profile/${post.author?.handle}/post/${post.uri?.split("/").pop()}`,
+        isRepost: !!item.reason,
+      };
+    });
+
+    return { posts };
+  }
+
+  isEmpty(data) {
+    return !data || !data.posts || data.posts.length === 0;
+  }
+
+  getItemKey(item) {
+    return item.url;
+  }
+
+  getItemsFromData(data) { return data?.posts; }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Bluesky", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    this.renderItemList(contentStack, data.posts, sizes, true);
+  }
+
+  renderItem(stack, post, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
+
+    if (post.url) {
+      itemStack.url = post.url;
+    }
+
+    const badgeColor = post.likes >= 100
+      ? CONFIG.colors.down
+      : post.likes >= 10
+      ? CONFIG.colors.warning
+      : CONFIG.colors.secondary;
+    this.addBadge(itemStack, { text: `${post.likes}`, color: badgeColor, sizes });
+    itemStack.addSpacer(sizes.spacing);
+
+    this.addNewDot(itemStack, post, sizes);
+
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(FormatUtils.truncate(post.text, 80));
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 2;
+
+    const meta = `${post.author} · ${FormatUtils.timeAgo(post.createdAt)}`;
+    const metaText = textStack.addText(meta);
+    metaText.font = Font.systemFont(sizes.fontSize.tertiary);
+    metaText.textColor = CONFIG.colors.secondary;
+    metaText.lineLimit = 1;
+  }
+}
+
+class StatusBoardDataSource extends DataSource {
+  async fetchData(widgetSize) {
+    const boardSources = this.config.boardSources || [];
+    const sizes = CONFIG.sizing[widgetSize];
+    const maxSources = widgetSize === "small" ? 2 : widgetSize === "medium" ? 3 : 5;
+    const sourcesToFetch = boardSources.slice(0, maxSources);
+
+    const results = await Promise.allSettled(
+      sourcesToFetch.map(async (sourceName) => {
+        try {
+          const source = DataSourceFactory.create(sourceName, this.api);
+          const data = await source.fetchData(widgetSize);
+
+          if (source.isEmpty(data)) {
+            return { name: sourceName, config: CONFIG.sources[sourceName], topItem: null, error: null };
+          }
+
+          const topItem = this.extractTopItem(sourceName, data);
+          return { name: sourceName, config: CONFIG.sources[sourceName], topItem, error: null };
+        } catch (error) {
+          // Try cache fallback
+          const cached = await CacheManager.load(sourceName);
+          if (cached) {
+            const topItem = this.extractTopItem(sourceName, cached.data);
+            return { name: sourceName, config: CONFIG.sources[sourceName], topItem, error: null };
+          }
+          return { name: sourceName, config: CONFIG.sources[sourceName], topItem: null, error: error.message };
+        }
+      })
+    );
+
+    const sources = results.map((r) => (r.status === "fulfilled" ? r.value : { name: "unknown", topItem: null, error: r.reason }));
+    return { sources };
+  }
+
+  extractTopItem(sourceName, data) {
+    if (!data) return null;
+    const map = {
+      billboard: () => data.albums?.[0] && `${data.albums[0].title} — ${data.albums[0].artist}`,
+      imdb: () => data.movies?.[0] && `${data.movies[0].title} (${data.movies[0].year})`,
+      steam: () => {
+        const allGames = data.profiles?.flatMap((p) => p.games || []) || [];
+        return allGames[0] && allGames[0].name;
+      },
+      hackernews: () => data.stories?.[0]?.title,
+      github: () => data.releases?.[0] && `${data.releases[0].repoName} ${data.releases[0].tagName}`,
+      wikipedia: () => data.edits?.[0]?.title,
+      timeline: () => data.events?.[0]?.title,
+      bookmarks: () => data.bookmarks?.[0]?.title,
+      bluesky: () => data.posts?.[0] && FormatUtils.truncate(data.posts[0].text, 60),
+      astronomy: () => "Astronomy data",
+    };
+    const extractor = map[sourceName];
+    return extractor ? extractor() || null : null;
+  }
+
+  isEmpty(data) {
+    return !data || !data.sources || data.sources.length === 0;
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Status Board", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    data.sources.forEach((source, index) => {
+      this.renderSourceRow(contentStack, source, sizes, widgetSize);
+      if (index < data.sources.length - 1) {
+        contentStack.addSpacer(sizes.spacing);
+      }
+    });
+  }
+
+  renderSourceRow(stack, source, sizes, widgetSize) {
+    const row = stack.addStack();
+    row.layoutHorizontally();
+    row.centerAlignContent();
+
+    if (source.config?.urlScheme) {
+      row.url = source.config.urlScheme;
+    }
+
+    // Source icon
+    const iconName = source.config?.icon || "questionmark.circle";
+    const icon = row.addImage(SFSymbol.named(iconName).image);
+    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
+    icon.tintColor = CONFIG.colors.accent;
+    row.addSpacer(sizes.spacing);
+
+    if (source.error) {
+      const errorText = row.addText(source.config?.name || source.name);
+      errorText.font = Font.systemFont(sizes.fontSize.secondary);
+      errorText.textColor = CONFIG.colors.tertiary;
+    } else if (source.topItem) {
+      const textStack = row.addStack();
+      textStack.layoutVertically();
+
+      if (widgetSize !== "small") {
+        const nameText = textStack.addText(source.config?.name || source.name);
+        nameText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+        nameText.textColor = CONFIG.colors.secondary;
+      }
+
+      const itemText = textStack.addText(FormatUtils.truncate(source.topItem, widgetSize === "small" ? 30 : 60));
+      itemText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+      itemText.textColor = CONFIG.colors.primary;
+      itemText.lineLimit = 1;
+    } else {
+      const emptyText = row.addText(`${source.config?.name || source.name} — no data`);
+      emptyText.font = Font.systemFont(sizes.fontSize.secondary);
+      emptyText.textColor = CONFIG.colors.tertiary;
+    }
+  }
+}
+
 // ============================================================================
 // DATA SOURCE FACTORY
 // ============================================================================
@@ -1556,6 +2297,9 @@ class DataSourceFactory {
     timeline: TimelineDataSource,
     bookmarks: BookmarksDataSource,
     books: BooksDataSource,
+    astronomy: AstronomyDataSource,
+    bluesky: BlueskyDataSource,
+    statusboard: StatusBoardDataSource,
   };
 
   static create(sourceName, apiClient) {
@@ -1593,15 +2337,19 @@ class UniversalWidget {
   constructor() {
     this.sourceName = args.widgetParameter || CONFIG.defaultSource;
     this.apiClient = new APIClient(CONFIG.apiBaseUrl);
-    this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
   }
 
   async run() {
     const widgetSize = config.widgetFamily || "medium";
     try {
-      // When running in app (not widget), offer credential setup
-      if (!config.runsInWidget && this.sourceName === "wikipedia") {
-        if (!CredentialManager.hasCredentials("wikipedia")) {
+      // Load iCloud config before creating data source
+      await ConfigManager.load();
+
+      this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
+
+      // When running in app (not widget), offer setup UI
+      if (!config.runsInWidget) {
+        if (this.sourceName === "wikipedia" && !CredentialManager.hasCredentials("wikipedia")) {
           const setupSuccess = await CredentialManager.setupWizard("wikipedia");
           if (!setupSuccess) {
             const alert = new Alert();
@@ -1609,6 +2357,28 @@ class UniversalWidget {
             alert.message = "Wikipedia credentials are required for this widget.";
             alert.addAction("OK");
             await alert.presentAlert();
+            Script.complete();
+            return;
+          }
+        }
+
+        // Offer config setup for sources with editable fields
+        const editableFields = ConfigManager.getEditableFields(this.sourceName);
+        if (editableFields.length > 0) {
+          const alert = new Alert();
+          alert.title = this.dataSource.config.name;
+          alert.addAction("Show Widget");
+          alert.addAction("Configure");
+          alert.addCancelAction("Cancel");
+
+          const choice = await alert.presentAlert();
+          if (choice === 1) {
+            const saved = await ConfigManager.showSetupUI(this.sourceName);
+            if (saved) {
+              // Recreate data source with updated config
+              this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
+            }
+          } else if (choice === -1) {
             Script.complete();
             return;
           }
@@ -1644,9 +2414,8 @@ class UniversalWidget {
       sizes.padding
     );
 
-    // Set refresh interval using per-source configuration
-    const refreshHours = this.dataSource.config.refreshHours || 1;
-    const refreshMs = refreshHours * 60 * 60 * 1000;
+    // Set refresh interval using smart scheduling (backoff on errors)
+    const refreshMs = RefreshManager.getRefreshInterval(this.sourceName);
     const refreshDate = new Date(Date.now() + refreshMs);
     widget.refreshAfterDate = refreshDate;
 
@@ -1659,15 +2428,15 @@ class UniversalWidget {
     let usingCache = false;
 
     try {
-      // Try to fetch fresh data
       data = await this.dataSource.fetchData(widgetSize);
+      RefreshManager.recordSuccess(this.sourceName);
 
-      // Cache successful response
       if (data) {
         await CacheManager.save(this.sourceName, data);
       }
     } catch (error) {
       console.error("Data fetch error:", error);
+      RefreshManager.recordError(this.sourceName);
 
       // Try to load from cache on failure
       const cached = await CacheManager.load(this.sourceName);
@@ -1682,6 +2451,13 @@ class UniversalWidget {
 
     if (!data || this.dataSource.isEmpty(data)) {
       return this.createErrorWidget("No data available", widgetSize);
+    }
+
+    if (this.dataSource.getItemsFromData(data)) {
+      const previousData = await CacheManager.loadPrevious(this.sourceName);
+      if (previousData) {
+        this.dataSource.markNewItems(data, previousData);
+      }
     }
 
     this.dataSource.renderWidget(widget, data, widgetSize);
