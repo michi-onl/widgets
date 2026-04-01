@@ -24,6 +24,7 @@ const CONFIG = {
   // Default settings
   defaultSource: "billboard",
   apiBaseUrl: "https://api.michi.onl/api",
+  apiToken: "",
 
   // Widget sizing configuration
   sizing: {
@@ -108,7 +109,7 @@ const CONFIG = {
       icon: "gamecontroller.fill",
       refreshHours: 6,
       urlScheme: "steam://",
-      profiles: ["exampleuser1", "exampleuser2"],
+      profiles: [],
     },
     hackernews: {
       name: "Hacker News",
@@ -123,7 +124,7 @@ const CONFIG = {
       icon: "arrow.down.circle",
       refreshHours: 6,
       urlScheme: "https://github.com/",
-      repos: ["zen-browser/desktop", "wikimedia/wikipedia-ios"],
+      repos: [],
     },
     wikipedia: {
       name: "Wikipedia Edits",
@@ -133,7 +134,7 @@ const CONFIG = {
       urlScheme: "https://wikipedia.org/",
       usernames: "",
       tokens: "",
-      languages: "en,de",
+      languages: "",
       limit: 10,
       hours: 72,
     },
@@ -171,7 +172,7 @@ const CONFIG = {
       icon: "square.grid.2x2.fill",
       refreshHours: 1,
       urlScheme: "",
-      boardSources: ["hackernews", "github", "billboard", "bookmarks"],
+      boardSources: [],
     },
     books: {
       name: "Currently Reading",
@@ -179,7 +180,7 @@ const CONFIG = {
       refreshHours: 24,
       urlScheme: "goodreads://",
       apiUrl: "https://www.googleapis.com/books/v1/volumes?q=isbn:",
-      defaultIsbn: "9780099518471",
+      defaultIsbn: "",
       goodreadsIconUrl:
         "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/42/d8/cd/42d8cdbf-48df-d1b6-ade9-d972bac7f371/PolarisAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
     },
@@ -207,12 +208,14 @@ const CONFIG = {
 // ============================================================================
 
 class APIClient {
-  constructor(baseUrl) {
+  constructor(baseUrl, token = "") {
     this.baseUrl = baseUrl;
+    this.token = token;
     this.timeout = 10; // 10 seconds, matching API timeout
   }
 
   async fetch(endpoint, params = {}) {
+    if (this.token) params.token = this.token;
     const url = this.buildUrl(endpoint, params);
     console.log(`Fetching: ${endpoint}`);
 
@@ -231,7 +234,8 @@ class APIClient {
   }
 
   async post(endpoint, body = {}) {
-    const url = this.buildUrl(endpoint, {});
+    const params = this.token ? { token: this.token } : {};
+    const url = this.buildUrl(endpoint, params);
     console.log(`POST: ${endpoint}`);
 
     const request = new Request(url);
@@ -489,7 +493,12 @@ class ConfigManager {
       const content = fm.readString(path);
       const saved = JSON.parse(content);
 
-      if (!saved || !saved.sources) return;
+      if (!saved) return;
+
+      // Merge top-level settings
+      if (saved.apiToken) CONFIG.apiToken = saved.apiToken;
+
+      if (!saved.sources) return;
 
       // Deep merge saved config into CONFIG.sources
       for (const [sourceName, sourceConfig] of Object.entries(saved.sources)) {
@@ -2336,54 +2345,25 @@ class DataSourceFactory {
 class UniversalWidget {
   constructor() {
     this.sourceName = args.widgetParameter || CONFIG.defaultSource;
-    this.apiClient = new APIClient(CONFIG.apiBaseUrl);
   }
 
   async run() {
     const widgetSize = config.widgetFamily || "medium";
     try {
-      // Load iCloud config before creating data source
+      // Load iCloud config before creating API client and data source
       await ConfigManager.load();
+      this.apiClient = new APIClient(CONFIG.apiBaseUrl, CONFIG.apiToken);
+
+      if (!config.runsInWidget) {
+        const picked = await this.showSourcePicker();
+        if (picked === null) {
+          Script.complete();
+          return;
+        }
+        this.sourceName = picked;
+      }
 
       this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
-
-      // When running in app (not widget), offer setup UI
-      if (!config.runsInWidget) {
-        if (this.sourceName === "wikipedia" && !CredentialManager.hasCredentials("wikipedia")) {
-          const setupSuccess = await CredentialManager.setupWizard("wikipedia");
-          if (!setupSuccess) {
-            const alert = new Alert();
-            alert.title = "Setup Cancelled";
-            alert.message = "Wikipedia credentials are required for this widget.";
-            alert.addAction("OK");
-            await alert.presentAlert();
-            Script.complete();
-            return;
-          }
-        }
-
-        // Offer config setup for sources with editable fields
-        const editableFields = ConfigManager.getEditableFields(this.sourceName);
-        if (editableFields.length > 0) {
-          const alert = new Alert();
-          alert.title = this.dataSource.config.name;
-          alert.addAction("Show Widget");
-          alert.addAction("Configure");
-          alert.addCancelAction("Cancel");
-
-          const choice = await alert.presentAlert();
-          if (choice === 1) {
-            const saved = await ConfigManager.showSetupUI(this.sourceName);
-            if (saved) {
-              // Recreate data source with updated config
-              this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
-            }
-          } else if (choice === -1) {
-            Script.complete();
-            return;
-          }
-        }
-      }
 
       const widget = await this.createWidget(widgetSize);
 
@@ -2400,6 +2380,48 @@ class UniversalWidget {
       Script.setWidget(errorWidget);
       Script.complete();
     }
+  }
+
+  async showSourcePicker() {
+    const sourceNames = Object.keys(CONFIG.sources);
+    const alert = new Alert();
+    alert.title = "Universal Data Widget";
+    alert.message = "Choose a source to preview or configure.";
+
+    for (const name of sourceNames) {
+      const src = CONFIG.sources[name];
+      const hasFields = ConfigManager.getEditableFields(name).length > 0 || name === "wikipedia";
+      alert.addAction(`${src.name}${hasFields ? " ⚙️" : ""}`);
+    }
+    alert.addCancelAction("Cancel");
+
+    const choice = await alert.presentAlert();
+    if (choice === -1) return null;
+
+    const chosen = sourceNames[choice];
+
+    if (chosen === "wikipedia") {
+      const setupSuccess = await CredentialManager.setupWizard("wikipedia");
+      if (!setupSuccess) return null;
+      return chosen;
+    }
+
+    const editableFields = ConfigManager.getEditableFields(chosen);
+    if (editableFields.length > 0) {
+      const actionAlert = new Alert();
+      actionAlert.title = CONFIG.sources[chosen].name;
+      actionAlert.addAction("Show Widget");
+      actionAlert.addAction("Configure");
+      actionAlert.addCancelAction("Cancel");
+
+      const action = await actionAlert.presentAlert();
+      if (action === -1) return null;
+      if (action === 1) {
+        await ConfigManager.showSetupUI(chosen);
+      }
+    }
+
+    return chosen;
   }
 
   async createWidget(widgetSize) {
