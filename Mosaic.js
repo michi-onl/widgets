@@ -3,7 +3,7 @@
 // icon-color: deep-blue; icon-glyph: chart-line;
 
 /**
- * Universal Data Widget
+ * Mosaic
  * Author: Michael Wagner, michi.onl
  *
  * A comprehensive Scriptable widget displaying data from multiple sources
@@ -24,7 +24,7 @@ const CONFIG = {
   // Default settings
   defaultSource: "billboard",
   apiBaseUrl: "https://api.michi.onl/api",
-  apiToken: "",
+  apiToken: "", // Set via widget-config.json, not here
 
   // Widget sizing configuration
   sizing: {
@@ -109,7 +109,7 @@ const CONFIG = {
       icon: "gamecontroller.fill",
       refreshHours: 6,
       urlScheme: "steam://",
-      profiles: [],
+      profiles: [], // Set via widget-config.json
     },
     hackernews: {
       name: "Hacker News",
@@ -124,7 +124,7 @@ const CONFIG = {
       icon: "arrow.down.circle",
       refreshHours: 6,
       urlScheme: "https://github.com/",
-      repos: [],
+      repos: [], // Set via widget-config.json
     },
     wikipedia: {
       name: "Wikipedia Edits",
@@ -132,9 +132,6 @@ const CONFIG = {
       icon: "book.fill",
       refreshHours: 2,
       urlScheme: "https://wikipedia.org/",
-      usernames: "",
-      tokens: "",
-      languages: "",
       limit: 10,
       hours: 72,
     },
@@ -157,22 +154,18 @@ const CONFIG = {
       icon: "moon.stars.fill",
       refreshHours: 1,
       urlScheme: "weather://",
-      latitude: "",
-      longitude: "",
     },
     bluesky: {
       name: "Bluesky",
       icon: "bubble.left.fill",
       refreshHours: 1,
       urlScheme: "https://bsky.app/",
-      handle: "",
     },
     statusboard: {
       name: "Status Board",
       icon: "square.grid.2x2.fill",
       refreshHours: 1,
       urlScheme: "",
-      boardSources: [],
     },
     books: {
       name: "Currently Reading",
@@ -180,7 +173,6 @@ const CONFIG = {
       refreshHours: 24,
       urlScheme: "goodreads://",
       apiUrl: "https://www.googleapis.com/books/v1/volumes?q=isbn:",
-      defaultIsbn: "",
       goodreadsIconUrl:
         "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/42/d8/cd/42d8cdbf-48df-d1b6-ade9-d972bac7f371/PolarisAppIcon-0-0-1x_U007epad-0-1-0-85-220.png/1024x1024bb.jpg",
     },
@@ -262,7 +254,7 @@ class APIClient {
       .filter(([, value]) => value !== null && value !== undefined)
       .map(
         ([key, value]) =>
-          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+          `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
       )
       .join("&");
   }
@@ -271,7 +263,9 @@ class APIClient {
     let url = this.baseUrl + endpoint;
     // Filter out empty values to avoid appending ?token= to external APIs
     const filtered = Object.fromEntries(
-      Object.entries(params).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      Object.entries(params).filter(
+        ([, v]) => v !== "" && v !== null && v !== undefined,
+      ),
     );
     if (Object.keys(filtered).length === 0) return url;
     const separator = url.includes("?") ? "&" : "?";
@@ -332,11 +326,16 @@ class CacheManager {
       const { fm, path: cachePath } = this.getCachePath(source);
 
       if (fm.fileExists(cachePath)) {
-        const prevPath = fm.joinPath(fm.joinPath(fm.documentsDirectory(), "widget-cache"), `previous_${source}.json`);
+        const prevPath = fm.joinPath(
+          fm.joinPath(fm.documentsDirectory(), "widget-cache"),
+          `previous_${source}.json`,
+        );
         try {
           const existing = fm.readString(cachePath);
           fm.writeString(prevPath, existing);
-        } catch { /* ignore copy failures */ }
+        } catch {
+          /* ignore copy failures */
+        }
       }
 
       const cacheData = {
@@ -354,7 +353,10 @@ class CacheManager {
   static async loadPrevious(source) {
     try {
       const fm = this.getFileManager();
-      const prevPath = fm.joinPath(fm.joinPath(fm.documentsDirectory(), "widget-cache"), `previous_${source}.json`);
+      const prevPath = fm.joinPath(
+        fm.joinPath(fm.documentsDirectory(), "widget-cache"),
+        `previous_${source}.json`,
+      );
 
       if (!fm.fileExists(prevPath)) return null;
 
@@ -389,7 +391,9 @@ class CacheManager {
       // Check if cache is within max age
       const ageHours = (Date.now() - cacheData.timestamp) / (1000 * 60 * 60);
       if (ageHours > this.maxAgeHours) {
-        console.log(`Cache for ${source} expired (${ageHours.toFixed(1)}h old)`);
+        console.log(
+          `Cache for ${source} expired (${ageHours.toFixed(1)}h old)`,
+        );
         return null;
       }
 
@@ -430,7 +434,9 @@ class RefreshManager {
     try {
       const { fm, path } = this.getStatsPath();
       fm.writeString(path, JSON.stringify(stats));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   static recordSuccess(source) {
@@ -521,11 +527,15 @@ class ConfigManager {
       if (fm.fileExists(path)) {
         try {
           existing = JSON.parse(fm.readString(path));
-        } catch { /* start fresh */ }
+        } catch {
+          /* start fresh */
+        }
       }
 
       // Merge new overrides into existing saved config
-      for (const [sourceName, sourceConfig] of Object.entries(sourceOverrides)) {
+      for (const [sourceName, sourceConfig] of Object.entries(
+        sourceOverrides,
+      )) {
         existing.sources[sourceName] = {
           ...(existing.sources[sourceName] || {}),
           ...sourceConfig,
@@ -557,10 +567,13 @@ class ConfigManager {
       return false;
     }
 
-    alert.message = "Edit settings below. Changes sync across devices via iCloud.";
+    alert.message =
+      "Edit settings below. Changes sync across devices via iCloud.";
     for (const field of editableFields) {
       const currentValue = config[field.key];
-      const displayValue = Array.isArray(currentValue) ? currentValue.join(", ") : (currentValue || "");
+      const displayValue = Array.isArray(currentValue)
+        ? currentValue.join(", ")
+        : currentValue || "";
       alert.addTextField(field.label, displayValue);
     }
 
@@ -574,7 +587,10 @@ class ConfigManager {
     editableFields.forEach((field, index) => {
       const value = alert.textFieldValue(index);
       if (field.isArray) {
-        overrides[field.key] = value.split(",").map((s) => s.trim()).filter(Boolean);
+        overrides[field.key] = value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       } else {
         overrides[field.key] = value;
       }
@@ -589,81 +605,40 @@ class ConfigManager {
 
   static getEditableFields(sourceName) {
     const fieldMap = {
-      steam: [{ key: "profiles", label: "Steam profiles (comma-separated)", isArray: true }],
-      github: [{ key: "repos", label: "Repos: owner/repo (comma-separated)", isArray: true }],
+      steam: [
+        {
+          key: "profiles",
+          label: "Steam profiles (comma-separated)",
+          isArray: true,
+        },
+      ],
+      github: [
+        {
+          key: "repos",
+          label: "Repos: owner/repo (comma-separated)",
+          isArray: true,
+        },
+      ],
       bluesky: [{ key: "handle", label: "Bluesky handle" }],
       astronomy: [
         { key: "latitude", label: "Latitude" },
         { key: "longitude", label: "Longitude" },
       ],
-      statusboard: [{ key: "boardSources", label: "Sources (comma-separated)", isArray: true }],
+      statusboard: [
+        {
+          key: "boardSources",
+          label: "Sources (comma-separated)",
+          isArray: true,
+        },
+      ],
       books: [{ key: "defaultIsbn", label: "Default ISBN" }],
+      wikipedia: [
+        { key: "usernames", label: "Username" },
+        { key: "tokens", label: "Watchlist token" },
+        { key: "languages", label: "Languages (e.g. en,de)" },
+      ],
     };
     return fieldMap[sourceName] || [];
-  }
-}
-
-class CredentialManager {
-  static keyPrefix = "widget_";
-
-  static getKey(source, type) {
-    return `${this.keyPrefix}${source}_${type}`;
-  }
-
-  static save(source, type, value) {
-    const key = this.getKey(source, type);
-    Keychain.set(key, value);
-    console.log(`Credential saved: ${key}`);
-  }
-
-  static load(source, type) {
-    const key = this.getKey(source, type);
-    return Keychain.contains(key) ? Keychain.get(key) : null;
-  }
-
-  static hasCredentials(source) {
-    if (source === "wikipedia") {
-      return (
-        Keychain.contains(this.getKey("wikipedia", "usernames")) &&
-        Keychain.contains(this.getKey("wikipedia", "tokens"))
-      );
-    }
-    return true;
-  }
-
-  static async setupWizard(source) {
-    if (source !== "wikipedia") {
-      return true;
-    }
-
-    const alert = new Alert();
-    alert.title = "Wikipedia Setup";
-    alert.message =
-      "Enter your Wikipedia watchlist credentials.\n\nFormat for usernames: lang:username,lang:username\nFormat for tokens: lang:token,lang:token";
-
-    alert.addTextField("Usernames (e.g., en:MyUser,de:MyUser)");
-    alert.addSecureTextField("Tokens");
-    alert.addTextField("Languages (e.g., en,de)");
-
-    alert.addAction("Save");
-    alert.addCancelAction("Cancel");
-
-    const result = await alert.presentAlert();
-
-    if (result === 0) {
-      const usernames = alert.textFieldValue(0);
-      const tokens = alert.textFieldValue(1);
-      const languages = alert.textFieldValue(2);
-
-      if (usernames && tokens && languages) {
-        this.save("wikipedia", "usernames", usernames);
-        this.save("wikipedia", "tokens", tokens);
-        this.save("wikipedia", "languages", languages);
-        return true;
-      }
-    }
-
-    return false;
   }
 }
 
@@ -729,7 +704,11 @@ class FormatUtils {
 
   static stripHtml(html) {
     if (!html) return "";
-    return html.replace(/<[^>]*>/g, "").replace(/&[^;]+;/g, " ").replace(/\s+/g, " ").trim();
+    return html
+      .replace(/<[^>]*>/g, "")
+      .replace(/&[^;]+;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 }
 
@@ -786,12 +765,15 @@ class DataSource {
       CONFIG.designTokens.badge.paddingV,
       CONFIG.designTokens.badge.paddingH,
       CONFIG.designTokens.badge.paddingV,
-      CONFIG.designTokens.badge.paddingH
+      CONFIG.designTokens.badge.paddingH,
     );
 
     if (icon) {
       const img = badge.addImage(SFSymbol.named(icon).image);
-      img.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      img.imageSize = new Size(
+        sizes.fontSize.tertiary,
+        sizes.fontSize.tertiary,
+      );
       img.tintColor = CONFIG.colors.white;
     } else {
       const label = badge.addText(text);
@@ -823,7 +805,9 @@ class DataSource {
     const prevItems = this.getItemsFromData(previousData);
     if (!items || !prevItems) return;
 
-    const prevKeys = new Set(prevItems.map((i) => this.getItemKey(i)).filter(Boolean));
+    const prevKeys = new Set(
+      prevItems.map((i) => this.getItemKey(i)).filter(Boolean),
+    );
     if (prevKeys.size === 0) return;
 
     for (const item of items) {
@@ -937,7 +921,7 @@ class BillboardDataSource extends DataSource {
     titleText.lineLimit = 1;
 
     const subtitleText = textStack.addText(
-      FormatUtils.truncate(item.subtitle, 30)
+      FormatUtils.truncate(item.subtitle, 30),
     );
     subtitleText.font = Font.systemFont(sizes.fontSize.secondary);
     subtitleText.textColor = CONFIG.colors.secondary;
@@ -984,7 +968,10 @@ class BillboardDataSource extends DataSource {
 
 class IMDbDataSource extends DataSource {
   isEmpty(data) {
-    return (!data.movies || data.movies.length === 0) && (!data.tvShows || data.tvShows.length === 0);
+    return (
+      (!data.movies || data.movies.length === 0) &&
+      (!data.tvShows || data.tvShows.length === 0)
+    );
   }
 
   async fetchData(widgetSize) {
@@ -998,7 +985,9 @@ class IMDbDataSource extends DataSource {
         ? response.movies.data.slice(0, half)
         : [];
     const tvShows =
-      widgetSize !== "small" && response.tv_shows?.data && Array.isArray(response.tv_shows.data)
+      widgetSize !== "small" &&
+      response.tv_shows?.data &&
+      Array.isArray(response.tv_shows.data)
         ? response.tv_shows.data.slice(0, half)
         : [];
 
@@ -1061,7 +1050,11 @@ class IMDbDataSource extends DataSource {
     // Rating badge
     if (item.rating !== undefined && item.rating !== null) {
       const displayText = item.rating === "" ? "NEW" : item.rating.toString();
-      this.addBadge(itemStack, { text: displayText, color: CONFIG.colors.accent, sizes });
+      this.addBadge(itemStack, {
+        text: displayText,
+        color: CONFIG.colors.accent,
+        sizes,
+      });
       itemStack.addSpacer(sizes.spacing);
     }
 
@@ -1089,7 +1082,10 @@ class IMDbDataSource extends DataSource {
 
     const iconName = title === "Movies" ? "film.fill" : "tv.fill";
     const icon = headerStack.addImage(SFSymbol.named(iconName).image);
-    icon.imageSize = new Size(sizes.fontSize.secondary, sizes.fontSize.secondary);
+    icon.imageSize = new Size(
+      sizes.fontSize.secondary,
+      sizes.fontSize.secondary,
+    );
     icon.tintColor = CONFIG.colors.secondary;
     headerStack.addSpacer(sizes.spacing);
 
@@ -1168,7 +1164,8 @@ class SteamDataSource extends DataSource {
       statusStack.centerAlignContent();
 
       for (const profile of data.profiles) {
-        const dotColor = CONFIG.colors.steamStatus[profile.status] || CONFIG.colors.secondary;
+        const dotColor =
+          CONFIG.colors.steamStatus[profile.status] || CONFIG.colors.secondary;
         const dot = statusStack.addText("●");
         dot.font = Font.systemFont(sizes.fontSize.tertiary);
         dot.textColor = dotColor;
@@ -1176,7 +1173,7 @@ class SteamDataSource extends DataSource {
         statusStack.addSpacer(3);
 
         const statusText = statusStack.addText(
-          `${profile.name} (${profile.status}${profile.totalGames != null ? ` · ${profile.totalGames} games` : ""})`
+          `${profile.name} (${profile.status}${profile.totalGames != null ? ` · ${profile.totalGames} games` : ""})`,
         );
         statusText.font = Font.systemFont(sizes.fontSize.tertiary);
         statusText.textColor = CONFIG.colors.secondary;
@@ -1209,7 +1206,7 @@ class SteamDataSource extends DataSource {
       iconImg.cornerRadius = CONFIG.designTokens.cornerRadius.icon;
     } else {
       const icon = itemStack.addImage(
-        SFSymbol.named("gamecontroller.fill").image
+        SFSymbol.named("gamecontroller.fill").image,
       );
       icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
       icon.tintColor = CONFIG.colors.secondary;
@@ -1228,7 +1225,7 @@ class SteamDataSource extends DataSource {
     const metaText = textStack.addText(
       `${FormatUtils.formatDuration(game.hoursPlayed)} • ${
         game.lastPlayedShort
-      }`
+      }`,
     );
     metaText.font = Font.systemFont(sizes.fontSize.secondary);
     metaText.textColor = CONFIG.colors.secondary;
@@ -1242,8 +1239,12 @@ class HackerNewsDataSource extends DataSource {
     return !data.stories || data.stories.length === 0;
   }
 
-  getItemKey(item) { return item.hnUrl; }
-  getItemsFromData(data) { return data?.stories; }
+  getItemKey(item) {
+    return item.hnUrl;
+  }
+  getItemsFromData(data) {
+    return data?.stories;
+  }
 
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
@@ -1303,12 +1304,17 @@ class HackerNewsDataSource extends DataSource {
     }
 
     // Score badge with heat colors
-    const badgeColor = story.points >= 300
-      ? CONFIG.colors.down
-      : story.points >= 100
-      ? CONFIG.colors.warning
-      : CONFIG.colors.secondary;
-    this.addBadge(itemStack, { text: `${story.points}`, color: badgeColor, sizes });
+    const badgeColor =
+      story.points >= 300
+        ? CONFIG.colors.down
+        : story.points >= 100
+          ? CONFIG.colors.warning
+          : CONFIG.colors.secondary;
+    this.addBadge(itemStack, {
+      text: `${story.points}`,
+      color: badgeColor,
+      sizes,
+    });
     itemStack.addSpacer(sizes.spacing);
 
     this.addNewDot(itemStack, story, sizes);
@@ -1335,8 +1341,12 @@ class GitHubDataSource extends DataSource {
     return !data.releases || data.releases.length === 0;
   }
 
-  getItemKey(item) { return `${item.repoName}:${item.tagName}`; }
-  getItemsFromData(data) { return data?.releases; }
+  getItemKey(item) {
+    return `${item.repoName}:${item.tagName}`;
+  }
+  getItemsFromData(data) {
+    return data?.releases;
+  }
 
   async fetchData(widgetSize) {
     const repos = this.config.repos.join(",");
@@ -1409,7 +1419,7 @@ class GitHubDataSource extends DataSource {
     }
 
     const metaText = itemStack.addText(
-      `${release.author} • ${release.timeAgo}`
+      `${release.author} • ${release.timeAgo}`,
     );
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
@@ -1421,24 +1431,23 @@ class WikipediaDataSource extends DataSource {
     return !data.edits || data.edits.length === 0;
   }
 
-  getItemKey(item) { return `${item.language}:${item.title}:${item.timestamp}`; }
-  getItemsFromData(data) { return data?.edits; }
+  getItemKey(item) {
+    return `${item.language}:${item.title}:${item.timestamp}`;
+  }
+  getItemsFromData(data) {
+    return data?.edits;
+  }
 
   async fetchData(widgetSize) {
-    // Load credentials from Keychain with fallback to config
-    const usernames =
-      CredentialManager.load("wikipedia", "usernames") || this.config.usernames;
-    const tokens =
-      CredentialManager.load("wikipedia", "tokens") || this.config.tokens;
-    const languages =
-      CredentialManager.load("wikipedia", "languages") || this.config.languages;
-
     const body = {
-      usernames: usernames,
-      tokens: tokens,
-      languages: languages,
+      usernames: this.config.usernames,
+      tokens: this.config.tokens,
+      languages: this.config.languages,
       hours: this.config.hours || 72,
-      limit: Math.min(this.config.limit || Infinity, CONFIG.sizing[widgetSize].maxItems),
+      limit: Math.min(
+        this.config.limit || Infinity,
+        CONFIG.sizing[widgetSize].maxItems,
+      ),
     };
 
     // Use POST method as required by the API
@@ -1455,7 +1464,10 @@ class WikipediaDataSource extends DataSource {
         language: edit.language,
         user: edit.creator,
         timeAgo: edit.timeAgo,
-        comment: FormatUtils.truncate(FormatUtils.stripHtml(edit.description || ""), 60),
+        comment: FormatUtils.truncate(
+          FormatUtils.stripHtml(edit.description || ""),
+          60,
+        ),
         url: edit.link,
       })),
       errors: response.errors || null,
@@ -1473,8 +1485,13 @@ class WikipediaDataSource extends DataSource {
       errorStack.layoutHorizontally();
       errorStack.centerAlignContent();
 
-      const warnIcon = errorStack.addImage(SFSymbol.named("exclamationmark.triangle.fill").image);
-      warnIcon.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      const warnIcon = errorStack.addImage(
+        SFSymbol.named("exclamationmark.triangle.fill").image,
+      );
+      warnIcon.imageSize = new Size(
+        sizes.fontSize.tertiary,
+        sizes.fontSize.tertiary,
+      );
       warnIcon.tintColor = CONFIG.colors.warning;
 
       errorStack.addSpacer(3);
@@ -1549,15 +1566,20 @@ class TimelineDataSource extends DataSource {
     return !data.events || data.events.length === 0;
   }
 
-  getItemKey(item) { return `${item.source}:${item.title}:${item.date}`; }
-  getItemsFromData(data) { return data?.events; }
+  getItemKey(item) {
+    return `${item.source}:${item.title}:${item.date}`;
+  }
+  getItemsFromData(data) {
+    return data?.events;
+  }
 
   async fetchData(widgetSize) {
     const params = this.category ? { category: this.category } : {};
     const response = await this.api.fetch(this.config.endpoint, params);
 
     const timelineLimits = { small: 3, medium: 4, large: 8 };
-    const limit = timelineLimits[widgetSize] ?? CONFIG.sizing[widgetSize].maxItems;
+    const limit =
+      timelineLimits[widgetSize] ?? CONFIG.sizing[widgetSize].maxItems;
 
     if (!response || !Array.isArray(response)) {
       return { events: [] };
@@ -1611,9 +1633,7 @@ class TimelineDataSource extends DataSource {
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(
-      FormatUtils.truncate(event.title, 40)
-    );
+    const titleText = textStack.addText(FormatUtils.truncate(event.title, 40));
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
@@ -1631,8 +1651,12 @@ class BookmarksDataSource extends DataSource {
     return !data.bookmarks || data.bookmarks.length === 0;
   }
 
-  getItemKey(item) { return item.url; }
-  getItemsFromData(data) { return data?.bookmarks; }
+  getItemKey(item) {
+    return item.url;
+  }
+  getItemsFromData(data) {
+    return data?.bookmarks;
+  }
 
   async fetchData(widgetSize) {
     const params = this.category ? { tag: this.category } : {};
@@ -1706,7 +1730,9 @@ class BookmarksDataSource extends DataSource {
 
     if (bookmark.dateAdded) {
       metaStack.addSpacer(sizes.spacing);
-      const timeText = metaStack.addText(FormatUtils.formatTimeAgo(bookmark.dateAdded));
+      const timeText = metaStack.addText(
+        FormatUtils.formatTimeAgo(bookmark.dateAdded),
+      );
       timeText.font = Font.systemFont(sizes.fontSize.tertiary);
       timeText.textColor = CONFIG.colors.tertiary;
     }
@@ -1736,15 +1762,20 @@ class BooksDataSource extends DataSource {
       publisher: book.publisher || "Unknown Publisher",
       publishedDate: book.publishedDate || "Unknown Date",
       pageCount: book.pageCount || "Unknown",
-      categories: book.categories ? book.categories.join(", ") : "Uncategorized",
-      maturityRating: CONFIG.maturityMap[book.maturityRating] || book.maturityRating,
+      categories: book.categories
+        ? book.categories.join(", ")
+        : "Uncategorized",
+      maturityRating:
+        CONFIG.maturityMap[book.maturityRating] || book.maturityRating,
       language: CONFIG.languageMap[book.language] || book.language,
     };
 
     // Pre-load images in parallel; skip goodreadsIcon on small widget where it isn't shown
     const [coverImage, goodreadsIcon] = await Promise.all([
       thumbnailUrl ? ImageCache.load(thumbnailUrl) : Promise.resolve(null),
-      widgetSize !== "small" ? ImageCache.load(this.config.goodreadsIconUrl) : Promise.resolve(null),
+      widgetSize !== "small"
+        ? ImageCache.load(this.config.goodreadsIconUrl)
+        : Promise.resolve(null),
     ]);
     data.coverImage = coverImage;
     data.goodreadsIcon = goodreadsIcon;
@@ -1798,21 +1829,21 @@ class BooksDataSource extends DataSource {
       infoStack.addSpacer(sizes.spacing);
 
       const publisherText = infoStack.addText(
-        `${data.publisher}, ${data.publishedDate}`
+        `${data.publisher}, ${data.publishedDate}`,
       );
       publisherText.font = Font.systemFont(sizes.fontSize.tertiary);
       publisherText.textColor = CONFIG.colors.tertiary;
       publisherText.lineLimit = 1;
 
       const detailText = infoStack.addText(
-        `${data.pageCount} Pages · ${data.categories}`
+        `${data.pageCount} Pages · ${data.categories}`,
       );
       detailText.font = Font.systemFont(sizes.fontSize.tertiary);
       detailText.textColor = CONFIG.colors.tertiary;
       detailText.lineLimit = 1;
 
       const metaText = infoStack.addText(
-        `${data.language} · ${data.maturityRating}`
+        `${data.language} · ${data.maturityRating}`,
       );
       metaText.font = Font.systemFont(sizes.fontSize.tertiary);
       metaText.textColor = CONFIG.colors.tertiary;
@@ -1863,7 +1894,10 @@ class AstronomyDataSource extends DataSource {
   async getLocation() {
     // Try configured coordinates first
     if (this.config.latitude && this.config.longitude) {
-      return { latitude: parseFloat(this.config.latitude), longitude: parseFloat(this.config.longitude) };
+      return {
+        latitude: parseFloat(this.config.latitude),
+        longitude: parseFloat(this.config.longitude),
+      };
     }
 
     // Try cached location
@@ -1874,7 +1908,10 @@ class AstronomyDataSource extends DataSource {
 
     // Request device location
     const location = await Location.current();
-    const coords = { latitude: location.latitude, longitude: location.longitude };
+    const coords = {
+      latitude: location.latitude,
+      longitude: location.longitude,
+    };
     CacheManager.save("_location", coords);
     return coords;
   }
@@ -1885,7 +1922,7 @@ class AstronomyDataSource extends DataSource {
     const lon = loc.longitude;
 
     const weatherApi = new APIClient(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset,uv_index_max&current=temperature_2m,weather_code&timezone=auto`
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset,uv_index_max&current=temperature_2m,weather_code&timezone=auto`,
     );
     const weather = await weatherApi.fetch("");
 
@@ -1935,7 +1972,8 @@ class AstronomyDataSource extends DataSource {
   }
 
   formatTime(dateOrString) {
-    const d = dateOrString instanceof Date ? dateOrString : new Date(dateOrString);
+    const d =
+      dateOrString instanceof Date ? dateOrString : new Date(dateOrString);
     return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
   }
 
@@ -2038,7 +2076,12 @@ class AstronomyDataSource extends DataSource {
     row.addSpacer(sizes.spacing);
 
     const uvValue = Math.round(data.uvIndex);
-    const uvColor = uvValue >= 6 ? CONFIG.colors.down : uvValue >= 3 ? CONFIG.colors.warning : CONFIG.colors.up;
+    const uvColor =
+      uvValue >= 6
+        ? CONFIG.colors.down
+        : uvValue >= 3
+          ? CONFIG.colors.warning
+          : CONFIG.colors.up;
     this.addBadge(row, { text: `${uvValue}`, color: uvColor, sizes });
   }
 
@@ -2089,7 +2132,7 @@ class BlueskyDataSource extends DataSource {
     const limit = sizes.maxItems;
 
     const bskyApi = new APIClient(
-      `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=${limit}&filter=posts_no_replies`
+      `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=${limit}&filter=posts_no_replies`,
     );
     const response = await bskyApi.fetch("");
 
@@ -2123,7 +2166,9 @@ class BlueskyDataSource extends DataSource {
     return item.url;
   }
 
-  getItemsFromData(data) { return data?.posts; }
+  getItemsFromData(data) {
+    return data?.posts;
+  }
 
   renderWidget(widget, data, widgetSize) {
     const sizes = CONFIG.sizing[widgetSize];
@@ -2146,12 +2191,17 @@ class BlueskyDataSource extends DataSource {
       itemStack.url = post.url;
     }
 
-    const badgeColor = post.likes >= 100
-      ? CONFIG.colors.down
-      : post.likes >= 10
-      ? CONFIG.colors.warning
-      : CONFIG.colors.secondary;
-    this.addBadge(itemStack, { text: `${post.likes}`, color: badgeColor, sizes });
+    const badgeColor =
+      post.likes >= 100
+        ? CONFIG.colors.down
+        : post.likes >= 10
+          ? CONFIG.colors.warning
+          : CONFIG.colors.secondary;
+    this.addBadge(itemStack, {
+      text: `${post.likes}`,
+      color: badgeColor,
+      sizes,
+    });
     itemStack.addSpacer(sizes.spacing);
 
     this.addNewDot(itemStack, post, sizes);
@@ -2176,7 +2226,8 @@ class StatusBoardDataSource extends DataSource {
   async fetchData(widgetSize) {
     const boardSources = this.config.boardSources || [];
     const sizes = CONFIG.sizing[widgetSize];
-    const maxSources = widgetSize === "small" ? 2 : widgetSize === "medium" ? 3 : 5;
+    const maxSources =
+      widgetSize === "small" ? 2 : widgetSize === "medium" ? 3 : 5;
     const sourcesToFetch = boardSources.slice(0, maxSources);
 
     const results = await Promise.allSettled(
@@ -2186,42 +2237,72 @@ class StatusBoardDataSource extends DataSource {
           const data = await source.fetchData(widgetSize);
 
           if (source.isEmpty(data)) {
-            return { name: sourceName, config: CONFIG.sources[sourceName], topItem: null, error: null };
+            return {
+              name: sourceName,
+              config: CONFIG.sources[sourceName],
+              topItem: null,
+              error: null,
+            };
           }
 
           const topItem = this.extractTopItem(sourceName, data);
-          return { name: sourceName, config: CONFIG.sources[sourceName], topItem, error: null };
+          return {
+            name: sourceName,
+            config: CONFIG.sources[sourceName],
+            topItem,
+            error: null,
+          };
         } catch (error) {
           // Try cache fallback
           const cached = await CacheManager.load(sourceName);
           if (cached) {
             const topItem = this.extractTopItem(sourceName, cached.data);
-            return { name: sourceName, config: CONFIG.sources[sourceName], topItem, error: null };
+            return {
+              name: sourceName,
+              config: CONFIG.sources[sourceName],
+              topItem,
+              error: null,
+            };
           }
-          return { name: sourceName, config: CONFIG.sources[sourceName], topItem: null, error: error.message };
+          return {
+            name: sourceName,
+            config: CONFIG.sources[sourceName],
+            topItem: null,
+            error: error.message,
+          };
         }
-      })
+      }),
     );
 
-    const sources = results.map((r) => (r.status === "fulfilled" ? r.value : { name: "unknown", topItem: null, error: r.reason }));
+    const sources = results.map((r) =>
+      r.status === "fulfilled"
+        ? r.value
+        : { name: "unknown", topItem: null, error: r.reason },
+    );
     return { sources };
   }
 
   extractTopItem(sourceName, data) {
     if (!data) return null;
     const map = {
-      billboard: () => data.albums?.[0] && `${data.albums[0].title} — ${data.albums[0].artist}`,
-      imdb: () => data.movies?.[0] && `${data.movies[0].title} (${data.movies[0].year})`,
+      billboard: () =>
+        data.albums?.[0] &&
+        `${data.albums[0].title} — ${data.albums[0].artist}`,
+      imdb: () =>
+        data.movies?.[0] && `${data.movies[0].title} (${data.movies[0].year})`,
       steam: () => {
         const allGames = data.profiles?.flatMap((p) => p.games || []) || [];
         return allGames[0] && allGames[0].name;
       },
       hackernews: () => data.stories?.[0]?.title,
-      github: () => data.releases?.[0] && `${data.releases[0].repoName} ${data.releases[0].tagName}`,
+      github: () =>
+        data.releases?.[0] &&
+        `${data.releases[0].repoName} ${data.releases[0].tagName}`,
       wikipedia: () => data.edits?.[0]?.title,
       timeline: () => data.events?.[0]?.title,
       bookmarks: () => data.bookmarks?.[0]?.title,
-      bluesky: () => data.posts?.[0] && FormatUtils.truncate(data.posts[0].text, 60),
+      bluesky: () =>
+        data.posts?.[0] && FormatUtils.truncate(data.posts[0].text, 60),
       astronomy: () => "Astronomy data",
     };
     const extractor = map[sourceName];
@@ -2279,12 +2360,16 @@ class StatusBoardDataSource extends DataSource {
         nameText.textColor = CONFIG.colors.secondary;
       }
 
-      const itemText = textStack.addText(FormatUtils.truncate(source.topItem, widgetSize === "small" ? 30 : 60));
+      const itemText = textStack.addText(
+        FormatUtils.truncate(source.topItem, widgetSize === "small" ? 30 : 60),
+      );
       itemText.font = Font.mediumSystemFont(sizes.fontSize.primary);
       itemText.textColor = CONFIG.colors.primary;
       itemText.lineLimit = 1;
     } else {
-      const emptyText = row.addText(`${source.config?.name || source.name} — no data`);
+      const emptyText = row.addText(
+        `${source.config?.name || source.name} — no data`,
+      );
       emptyText.font = Font.systemFont(sizes.fontSize.secondary);
       emptyText.textColor = CONFIG.colors.tertiary;
     }
@@ -2342,7 +2427,7 @@ class DataSourceFactory {
 // MAIN WIDGET CLASS
 // ============================================================================
 
-class UniversalWidget {
+class Mosaic {
   constructor() {
     this.sourceName = args.widgetParameter || CONFIG.defaultSource;
   }
@@ -2363,7 +2448,10 @@ class UniversalWidget {
         this.sourceName = picked;
       }
 
-      this.dataSource = DataSourceFactory.create(this.sourceName, this.apiClient);
+      this.dataSource = DataSourceFactory.create(
+        this.sourceName,
+        this.apiClient,
+      );
 
       const widget = await this.createWidget(widgetSize);
 
@@ -2385,12 +2473,12 @@ class UniversalWidget {
   async showSourcePicker() {
     const sourceNames = Object.keys(CONFIG.sources);
     const alert = new Alert();
-    alert.title = "Universal Data Widget";
+    alert.title = "Mosaic";
     alert.message = "Choose a source to preview or configure.";
 
     for (const name of sourceNames) {
       const src = CONFIG.sources[name];
-      const hasFields = ConfigManager.getEditableFields(name).length > 0 || name === "wikipedia";
+      const hasFields = ConfigManager.getEditableFields(name).length > 0;
       alert.addAction(`${src.name}${hasFields ? " ⚙️" : ""}`);
     }
     alert.addCancelAction("Cancel");
@@ -2399,12 +2487,6 @@ class UniversalWidget {
     if (choice === -1) return null;
 
     const chosen = sourceNames[choice];
-
-    if (chosen === "wikipedia") {
-      const setupSuccess = await CredentialManager.setupWizard("wikipedia");
-      if (!setupSuccess) return null;
-      return chosen;
-    }
 
     const editableFields = ConfigManager.getEditableFields(chosen);
     if (editableFields.length > 0) {
@@ -2433,7 +2515,7 @@ class UniversalWidget {
       sizes.padding,
       sizes.padding,
       sizes.padding,
-      sizes.padding
+      sizes.padding,
     );
 
     // Set refresh interval using smart scheduling (backoff on errors)
@@ -2503,7 +2585,7 @@ class UniversalWidget {
       sizes.padding,
       sizes.padding,
       sizes.padding,
-      sizes.padding
+      sizes.padding,
     );
 
     const stack = widget.addStack();
@@ -2511,9 +2593,12 @@ class UniversalWidget {
     stack.centerAlignContent();
 
     const icon = stack.addImage(
-      SFSymbol.named("exclamationmark.triangle").image
+      SFSymbol.named("exclamationmark.triangle").image,
     );
-    icon.imageSize = new Size(iconSizes[widgetSize] || 32, iconSizes[widgetSize] || 32);
+    icon.imageSize = new Size(
+      iconSizes[widgetSize] || 32,
+      iconSizes[widgetSize] || 32,
+    );
     icon.tintColor = CONFIG.colors.warning;
 
     stack.addSpacer(sizes.spacing);
@@ -2545,7 +2630,10 @@ class UniversalWidget {
     // Show offline indicator when using cached data
     if (usingCache) {
       const offlineIcon = footer.addImage(SFSymbol.named("icloud.slash").image);
-      offlineIcon.imageSize = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+      offlineIcon.imageSize = new Size(
+        sizes.fontSize.tertiary,
+        sizes.fontSize.tertiary,
+      );
       offlineIcon.tintColor = CONFIG.colors.warning;
 
       // Full "Offline" label only on large; medium keeps it icon-only
@@ -2563,9 +2651,10 @@ class UniversalWidget {
     const updateTime = new Date();
     const hours = updateTime.getHours().toString().padStart(2, "0");
     const minutes = updateTime.getMinutes().toString().padStart(2, "0");
-    const timeString = widgetSize === "large"
-      ? `Updated ${hours}:${minutes}`
-      : `${hours}:${minutes}`;
+    const timeString =
+      widgetSize === "large"
+        ? `Updated ${hours}:${minutes}`
+        : `${hours}:${minutes}`;
 
     const timeText = footer.addText(timeString);
     timeText.font = Font.systemFont(sizes.fontSize.tertiary);
@@ -2591,5 +2680,5 @@ class UniversalWidget {
 // EXECUTION
 // ============================================================================
 
-const widget = new UniversalWidget();
+const widget = new Mosaic();
 await widget.run();

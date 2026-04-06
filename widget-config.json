@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "apiToken": "your-api-token",
+  "sources": {
+    "steam": {
+      "profiles": ["steam-username-1", "steam-username-2"]
+    },
+    "github": {
+      "repos": ["owner/repo", "another-owner/another-repo"]
+    },
+    "wikipedia": {
+      "usernames": "your-wikipedia-username",
+      "tokens": "your-watchlist-token",
+      "languages": "en"
+    },
+    "astronomy": {
+      "latitude": "48.2082",
+      "longitude": "16.3738"
+    },
+    "bluesky": {
+      "handle": "you.bsky.social"
+    },
+    "statusboard": {
+      "boardSources": ["hackernews", "github", "steam"]
+    },
+    "books": {
+      "defaultIsbn": "9780099518471"
+    }
+  }
+}
