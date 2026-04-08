@@ -32,22 +32,22 @@ const CONFIG = {
       maxItems: 3,
       fontSize: { primary: 11, secondary: 9, tertiary: 8 },
       iconSize: 14,
-      spacing: 4,
-      padding: 12,
+      spacing: 5,
+      padding: 14,
     },
     medium: {
       maxItems: 6,
       fontSize: { primary: 12, secondary: 10, tertiary: 9 },
       iconSize: 16,
-      spacing: 6,
-      padding: 14,
+      spacing: 8,
+      padding: 16,
     },
     large: {
       maxItems: 12,
       fontSize: { primary: 13, secondary: 11, tertiary: 10 },
       iconSize: 18,
-      spacing: 8,
-      padding: 16,
+      spacing: 10,
+      padding: 18,
     },
   },
 
@@ -56,7 +56,7 @@ const CONFIG = {
     // Dynamic colors that adapt to light/dark mode
     primary: Color.dynamic(new Color("#000000"), new Color("#FFFFFF")),
     secondary: Color.dynamic(new Color("#8E8E93"), new Color("#8E8E93")),
-    tertiary: Color.dynamic(new Color("#C7C7CC"), new Color("#48484A")),
+    tertiary: Color.dynamic(new Color("#C7C7CC"), new Color("#636366")),
 
     // Semantic colors
     accent: new Color("#007AFF"),
@@ -85,6 +85,12 @@ const CONFIG = {
   designTokens: {
     cornerRadius: { badge: 4, icon: 3 },
     badge: { paddingV: 2, paddingH: 4 },
+    compactSpacing: 4,
+  },
+
+  messages: {
+    offline: "Offline",
+    tapRetry: "Tap to try again",
   },
 
   // Source-specific configuration
@@ -1402,7 +1408,7 @@ class GitHubDataSource extends DataSource {
     this.addNewDot(headerStack, release, sizes);
 
     const repoText = headerStack.addText(release.repo);
-    repoText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
+    repoText.font = Font.mediumSystemFont(sizes.fontSize.secondary);
     repoText.textColor = CONFIG.colors.accent;
 
     headerStack.addSpacer(4);
@@ -2356,7 +2362,7 @@ class StatusBoardDataSource extends DataSource {
 
       if (widgetSize !== "small") {
         const nameText = textStack.addText(source.config?.name || source.name);
-        nameText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+        nameText.font = Font.semiboldSystemFont(sizes.fontSize.tertiary);
         nameText.textColor = CONFIG.colors.secondary;
       }
 
@@ -2566,12 +2572,7 @@ class Mosaic {
 
     this.dataSource.renderWidget(widget, data, widgetSize);
 
-    // Add update indicator for medium and large widgets
-    if (widgetSize !== "small") {
-      this.addFooter(widget, sizes, usingCache, widgetSize);
-    } else {
-      widget.addSpacer();
-    }
+    this.addFooter(widget, sizes, usingCache, widgetSize);
 
     return widget;
   }
@@ -2588,6 +2589,8 @@ class Mosaic {
       sizes.padding,
     );
 
+    widget.url = "scriptable://run?name=" + encodeURIComponent(Script.name());
+
     const stack = widget.addStack();
     stack.layoutVertically();
     stack.centerAlignContent();
@@ -2595,10 +2598,8 @@ class Mosaic {
     const icon = stack.addImage(
       SFSymbol.named("exclamationmark.triangle").image,
     );
-    icon.imageSize = new Size(
-      iconSizes[widgetSize] || 32,
-      iconSizes[widgetSize] || 32,
-    );
+    const iconSize = iconSizes[widgetSize] || 32;
+    icon.imageSize = new Size(iconSize, iconSize);
     icon.tintColor = CONFIG.colors.warning;
 
     stack.addSpacer(sizes.spacing);
@@ -2610,13 +2611,20 @@ class Mosaic {
     errorText.centerAlignText();
 
     if (widgetSize !== "small") {
-      stack.addSpacer(4);
+      stack.addSpacer(CONFIG.designTokens.compactSpacing);
 
       const messageText = stack.addText(message);
       messageText.font = Font.systemFont(sizes.fontSize.tertiary);
       messageText.textColor = CONFIG.colors.secondary;
       messageText.centerAlignText();
     }
+
+    stack.addSpacer(widgetSize === "small" ? CONFIG.designTokens.compactSpacing : sizes.spacing);
+
+    const hintText = stack.addText(CONFIG.messages.tapRetry);
+    hintText.font = Font.systemFont(sizes.fontSize.tertiary);
+    hintText.textColor = CONFIG.colors.tertiary;
+    hintText.centerAlignText();
 
     return widget;
   }
@@ -2627,7 +2635,6 @@ class Mosaic {
     const footer = widget.addStack();
     footer.layoutHorizontally();
 
-    // Show offline indicator when using cached data
     if (usingCache) {
       const offlineIcon = footer.addImage(SFSymbol.named("icloud.slash").image);
       offlineIcon.imageSize = new Size(
@@ -2636,11 +2643,10 @@ class Mosaic {
       );
       offlineIcon.tintColor = CONFIG.colors.warning;
 
-      // Full "Offline" label only on large; medium keeps it icon-only
       if (widgetSize === "large") {
-        footer.addSpacer(4);
+        footer.addSpacer(CONFIG.designTokens.compactSpacing);
 
-        const offlineText = footer.addText("Offline");
+        const offlineText = footer.addText(CONFIG.messages.offline);
         offlineText.font = Font.systemFont(sizes.fontSize.tertiary);
         offlineText.textColor = CONFIG.colors.warning;
       }
