@@ -56,6 +56,7 @@ const CONFIG = {
     // Dynamic colors that adapt to light/dark mode
     primary: Color.dynamic(new Color("#000000"), new Color("#FFFFFF")),
     secondary: Color.dynamic(new Color("#8E8E93"), new Color("#8E8E93")),
+    secondaryBright: Color.dynamic(new Color("#8E8E93"), new Color("#AEAEB2")),
     tertiary: Color.dynamic(new Color("#C7C7CC"), new Color("#636366")),
 
     // Semantic colors
@@ -166,6 +167,13 @@ const CONFIG = {
       icon: "bubble.left.fill",
       refreshHours: 1,
       urlScheme: "https://bsky.app/",
+    },
+    activity: {
+      name: "Activity",
+      endpoint: "",
+      icon: "bolt.fill",
+      refreshHours: 1,
+      urlScheme: "",
     },
     statusboard: {
       name: "Status Board",
@@ -700,6 +708,10 @@ class FormatUtils {
     return `${hours.toFixed(1)}h`;
   }
 
+  static pluralize(count, singular, plural) {
+    return count === 1 ? `${count} ${singular}` : `${count} ${plural || singular + "s"}`;
+  }
+
   static cleanTitle(title) {
     if (!title) return "";
     return title
@@ -934,7 +946,7 @@ class BillboardDataSource extends DataSource {
     subtitleText.lineLimit = 1;
 
     if (item.metadata.weeks) {
-      const metaText = textStack.addText(`${item.metadata.weeks} weeks`);
+      const metaText = textStack.addText(FormatUtils.pluralize(item.metadata.weeks, "week"));
       metaText.font = Font.systemFont(sizes.fontSize.tertiary);
       metaText.textColor = CONFIG.colors.tertiary;
     }
@@ -1004,9 +1016,12 @@ class IMDbDataSource extends DataSource {
   }
 
   formatItem(item, type) {
+    const subtitleParts = [];
+    if (item.year) subtitleParts.push(item.year);
+    if (item.length) subtitleParts.push(item.length);
     return {
       title: FormatUtils.truncate(item.title, 30),
-      subtitle: `${item.year || "N/A"} • ${item.length || ""}`,
+      subtitle: subtitleParts.join(" • "),
       rating: item.rating,
       genre: item.genre || "",
       url: item.href || "",
@@ -1073,11 +1088,12 @@ class IMDbDataSource extends DataSource {
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
 
-    const detailParts = [item.subtitle];
+    const detailParts = [];
+    if (item.subtitle) detailParts.push(item.subtitle);
     if (item.genre) detailParts.push(item.genre.split(",")[0]);
     const subtitleText = textStack.addText(detailParts.join(" • "));
     subtitleText.font = Font.systemFont(sizes.fontSize.tertiary);
-    subtitleText.textColor = CONFIG.colors.secondary;
+    subtitleText.textColor = CONFIG.colors.secondaryBright;
     subtitleText.lineLimit = 1;
   }
 
@@ -1120,7 +1136,6 @@ class SteamDataSource extends DataSource {
       profileStatuses.push({
         name: userData.profileName || username,
         status: userData.status || "offline",
-        totalGames: userData.totalGames,
       });
 
       if (userData.recentGames) {
@@ -1179,7 +1194,7 @@ class SteamDataSource extends DataSource {
         statusStack.addSpacer(3);
 
         const statusText = statusStack.addText(
-          `${profile.name} (${profile.status}${profile.totalGames != null ? ` · ${profile.totalGames} games` : ""})`,
+          `${profile.name} (${profile.status})`,
         );
         statusText.font = Font.systemFont(sizes.fontSize.tertiary);
         statusText.textColor = CONFIG.colors.secondary;
@@ -1260,7 +1275,7 @@ class HackerNewsDataSource extends DataSource {
     // API returns stories array with different field names
     return {
       stories: response.stories.slice(0, limit).map((story) => ({
-        title: FormatUtils.truncate(story.title, 50),
+        title: story.title,
         points: story.points,
         comments: story.numComments,
         author: story.author,
@@ -1438,7 +1453,7 @@ class WikipediaDataSource extends DataSource {
   }
 
   getItemKey(item) {
-    return `${item.language}:${item.title}:${item.timestamp}`;
+    return `${item.language}:${item.title}`;
   }
   getItemsFromData(data) {
     return data?.edits;
@@ -2088,7 +2103,9 @@ class AstronomyDataSource extends DataSource {
         : uvValue >= 3
           ? CONFIG.colors.warning
           : CONFIG.colors.up;
-    this.addBadge(row, { text: `${uvValue}`, color: uvColor, sizes });
+    const uvText = row.addText(`${uvValue}`);
+    uvText.font = Font.boldSystemFont(sizes.fontSize.primary);
+    uvText.textColor = uvColor;
   }
 
   renderGoldenHourRow(stack, data, sizes) {
@@ -2225,6 +2242,116 @@ class BlueskyDataSource extends DataSource {
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
     metaText.lineLimit = 1;
+  }
+}
+
+class ActivityDataSource extends DataSource {
+  static sourceIcons = {
+    github: "chevron.left.forwardslash.chevron.right",
+    wikipedia: "book.fill",
+  };
+
+  static sourceColors = {
+    github: new Color("#6e5494"),
+    wikipedia: new Color("#636466"),
+  };
+
+  isEmpty(data) {
+    return !data.items || data.items.length === 0;
+  }
+
+  getItemKey(item) {
+    return `${item.source}:${item.key}`;
+  }
+
+  getItemsFromData(data) {
+    return data?.items;
+  }
+
+  async fetchData(widgetSize) {
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+    const githubConfig = CONFIG.sources.github;
+    const wikiConfig = CONFIG.sources.wikipedia;
+
+    const fetches = [];
+
+    if (githubConfig) {
+      const githubSource = new GitHubDataSource(githubConfig, this.api);
+      fetches.push(
+        githubSource.fetchData(widgetSize).then((data) =>
+          (data.releases || []).map((r) => ({
+            source: "github",
+            key: `${r.repo}:${r.tagName}`,
+            title: `${r.repo} ${r.tagName}${r.isPrerelease ? " (pre)" : ""}`,
+            detail: `${r.author} • ${r.timeAgo}`,
+            url: r.url || "",
+          }))
+        ).catch(() => [])
+      );
+    }
+
+    if (wikiConfig) {
+      const wikiSource = new WikipediaDataSource(wikiConfig, this.api);
+      fetches.push(
+        wikiSource.fetchData(widgetSize).then((data) =>
+          (data.edits || []).map((e) => ({
+            source: "wikipedia",
+            key: `${e.language}:${e.title}`,
+            title: e.title,
+            detail: e.comment && e.comment !== "N/A" ? e.comment : `${e.user} • ${e.timeAgo}`,
+            url: e.url || "",
+          }))
+        ).catch(() => [])
+      );
+    }
+
+    const results = await Promise.all(fetches);
+    return { items: results.flat().slice(0, limit) };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    this.addHeader(widget, "Activity", sizes);
+    widget.addSpacer(sizes.spacing);
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    this.renderItemList(contentStack, data.items, sizes);
+  }
+
+  renderItem(stack, item, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+    itemStack.centerAlignContent();
+
+    if (item.url) {
+      itemStack.url = item.url;
+    }
+
+    const sourceIcon = ActivityDataSource.sourceIcons[item.source] || "questionmark.circle";
+    const sourceColor = ActivityDataSource.sourceColors[item.source] || CONFIG.colors.accent;
+    this.addBadge(itemStack, { icon: sourceIcon, color: sourceColor, sizes });
+
+    itemStack.addSpacer(sizes.spacing);
+
+    this.addNewDot(itemStack, item, sizes);
+
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleText = textStack.addText(FormatUtils.truncate(item.title, 45));
+    titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    titleText.textColor = CONFIG.colors.primary;
+    titleText.lineLimit = 1;
+
+    const detailText = textStack.addText(item.detail);
+    detailText.font = Font.systemFont(sizes.fontSize.tertiary);
+    detailText.textColor = CONFIG.colors.secondary;
+    detailText.lineLimit = 1;
+
+    itemStack.addSpacer();
   }
 }
 
@@ -2399,6 +2526,7 @@ class DataSourceFactory {
     books: BooksDataSource,
     astronomy: AstronomyDataSource,
     bluesky: BlueskyDataSource,
+    activity: ActivityDataSource,
     statusboard: StatusBoardDataSource,
   };
 
@@ -2605,7 +2733,13 @@ class Mosaic {
     stack.addSpacer(sizes.spacing);
 
     const sourceName = this.sourceName || "Widget";
-    const errorText = stack.addText(`${sourceName} Error`);
+    const msg = message.toLowerCase();
+    let errorType = "Error";
+    if (msg.includes("timeout") || msg.includes("timed out")) errorType = "Timeout";
+    else if (msg.includes("401") || msg.includes("403")) errorType = "Auth Error";
+    else if (msg.includes("429")) errorType = "Rate Limited";
+    else if (msg.includes("network") || msg.includes("connect")) errorType = "Network Error";
+    const errorText = stack.addText(`${sourceName} ${errorType}`);
     errorText.font = Font.boldSystemFont(sizes.fontSize.primary);
     errorText.textColor = CONFIG.colors.primary;
     errorText.centerAlignText();
