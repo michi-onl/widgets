@@ -151,6 +151,7 @@ Set the Parameter field in the Scriptable widget settings on your home screen.
 | `timeline` | All activity from your timeline |
 | `timeline:contributions` | Timeline filtered to contributions |
 | `timeline:media` | Timeline filtered to media |
+| `activity` | Combined activity from GitHub and Wikipedia |
 | `bookmarks` | Recent bookmarks from Linkding |
 | `bookmarks:dev` | Bookmarks filtered by tag |
 | `books` | Currently reading (uses config ISBN) |
@@ -158,6 +159,7 @@ Set the Parameter field in the Scriptable widget settings on your home screen.
 | `astronomy` | Sun, moon, UV, golden hour |
 | `bluesky` | Your recent Bluesky posts |
 | `statusboard` | Dashboard with top items from multiple sources |
+| `dhbw-timetable` | DHBW lecture timetable (upcoming events) |
 
 ## In-app setup
 

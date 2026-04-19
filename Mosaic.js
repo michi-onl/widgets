@@ -7,7 +7,7 @@
  * Author: Michael Wagner, michi.onl
  *
  * A comprehensive Scriptable widget displaying data from multiple sources
- * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline, books, bookmarks
+ * Supported sources: billboard, imdb, steam, hackernews, github, wikipedia, timeline, books, bookmarks, dhbw-timetable
  *
  * Configuration: Set widget parameter to source name (e.g., "billboard")
  * Timeline supports category filters: "timeline:contributions", "timeline:media"
@@ -80,11 +80,22 @@ const CONFIG = {
       offline: new Color("#8E8E93"),
       private: new Color("#FF9500"),
     },
+
+    dhbwTypes: {
+      Vorlesung: new Color("#007AFF"),
+      Übung: new Color("#34C759"),
+      Labor: new Color("#FF9500"),
+      Praktikum: new Color("#FF9500"),
+      Seminar: new Color("#AF52DE"),
+      Tutorium: new Color("#5856D6"),
+      Klausur: new Color("#FF3B30"),
+      Prüfung: new Color("#FF3B30"),
+    },
   },
 
   // Shared design tokens for badges, radii, and spacing
   designTokens: {
-    cornerRadius: { badge: 4, icon: 3 },
+    cornerRadius: { badge: 4, icon: 3, cover: 6 },
     badge: { paddingV: 2, paddingH: 4 },
     compactSpacing: 4,
   },
@@ -155,6 +166,12 @@ const CONFIG = {
       icon: "bookmark.fill",
       refreshHours: 1,
       urlScheme: "https://linkding.michi.onl/",
+    },
+    "dhbw-timetable": {
+      name: "DHBW Timetable",
+      endpoint: "/dhbw-timetable",
+      icon: "calendar.badge.clock",
+      refreshHours: 1,
     },
     astronomy: {
       name: "Astronomy",
@@ -712,6 +729,31 @@ class FormatUtils {
     return count === 1 ? `${count} ${singular}` : `${count} ${plural || singular + "s"}`;
   }
 
+  static formatTime(value) {
+    if (!value) return "";
+    if (value instanceof Date) {
+      return `${value.getHours().toString().padStart(2, "0")}:${value.getMinutes().toString().padStart(2, "0")}`;
+    }
+    if (typeof value === "string") {
+      if (value.includes("T")) {
+        const time = value.split("T")[1] || value;
+        if (time.length >= 5) return time.slice(0, 5);
+      }
+      if (value.length >= 5) return value.slice(0, 5);
+    }
+    return String(value);
+  }
+
+  static formatDateLabel(dateStr, today, tomorrow) {
+    const d = new Date(dateStr + "T00:00:00");
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dMid = new Date(d);
+    dMid.setHours(0, 0, 0, 0);
+    if (today && dMid.getTime() === today.getTime()) return "Today";
+    if (tomorrow && dMid.getTime() === tomorrow.getTime()) return "Tomorrow";
+    return `${dayNames[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
+  }
+
   static cleanTitle(title) {
     if (!title) return "";
     return title
@@ -810,6 +852,20 @@ class DataSource {
     stack.addSpacer(3);
   }
 
+  static async preloadImages(items, urlKey, cacheKey) {
+    await Promise.all(items.map(async (item) => {
+      if (item[urlKey]) {
+        item[cacheKey] = await ImageCache.load(item[urlKey]);
+      }
+    }));
+  }
+
+  addCircularImage(stack, image, size) {
+    const img = stack.addImage(image);
+    img.imageSize = new Size(size, size);
+    img.cornerRadius = size / 2;
+  }
+
   getItemKey(item) {
     return null;
   }
@@ -868,19 +924,24 @@ class BillboardDataSource extends DataSource {
     }
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
+    const items = response.music.data.slice(0, limit).map((item) => ({
+      position: item.position,
+      title: FormatUtils.cleanTitle(item.title),
+      subtitle: item.artist,
+      coverUrl: item.cover || null,
+      metadata: {
+        last_week: item.last_week,
+        peak: item.peak,
+        weeks: item.weeks,
+      },
+    }));
+
+    await DataSource.preloadImages(items, "coverUrl", "cover");
+
     return {
       title: response.music.data_title || "Billboard 200",
       subtitle: response.music.data_desc || "",
-      items: response.music.data.slice(0, limit).map((item) => ({
-        position: item.position,
-        title: FormatUtils.cleanTitle(item.title),
-        subtitle: item.artist,
-        metadata: {
-          last_week: item.last_week,
-          peak: item.peak,
-          weeks: item.weeks,
-        },
-      })),
+      items,
     };
   }
 
@@ -919,6 +980,14 @@ class BillboardDataSource extends DataSource {
     const itemStack = stack.addStack();
     itemStack.layoutHorizontally();
     itemStack.centerAlignContent();
+
+    // Cover image
+    if (item.cover) {
+      const coverImg = itemStack.addImage(item.cover);
+      coverImg.imageSize = new Size(sizes.iconSize * 2, sizes.iconSize * 2);
+      coverImg.cornerRadius = CONFIG.designTokens.cornerRadius.icon;
+      itemStack.addSpacer(sizes.spacing);
+    }
 
     // Position indicator
     const positionStack = itemStack.addStack();
@@ -1000,18 +1069,20 @@ class IMDbDataSource extends DataSource {
 
     const movies =
       response.movies?.data && Array.isArray(response.movies.data)
-        ? response.movies.data.slice(0, half)
+        ? response.movies.data.slice(0, half).map((m) => this.formatItem(m, "movie"))
         : [];
     const tvShows =
       widgetSize !== "small" &&
       response.tv_shows?.data &&
       Array.isArray(response.tv_shows.data)
-        ? response.tv_shows.data.slice(0, half)
+        ? response.tv_shows.data.slice(0, half).map((t) => this.formatItem(t, "tv"))
         : [];
 
+    await DataSource.preloadImages([...movies, ...tvShows], "imageUrl", "poster");
+
     return {
-      movies: movies.map((m) => this.formatItem(m, "movie")),
-      tvShows: tvShows.map((t) => this.formatItem(t, "tv")),
+      movies: movies,
+      tvShows: tvShows,
     };
   }
 
@@ -1026,6 +1097,9 @@ class IMDbDataSource extends DataSource {
       genre: item.genre || "",
       url: item.href || "",
       type: type,
+      imageUrl: item.image || null,
+      numVotes: item.numVotes ? parseInt(item.numVotes, 10) : null,
+      poster: null,
     };
   }
 
@@ -1068,6 +1142,16 @@ class IMDbDataSource extends DataSource {
       itemStack.url = item.url;
     }
 
+    // Poster image
+    if (item.poster) {
+      const posterH = sizes.iconSize * 2.4;
+      const posterW = sizes.iconSize * 1.6;
+      const posterImg = itemStack.addImage(item.poster);
+      posterImg.imageSize = new Size(posterW, posterH);
+      posterImg.cornerRadius = CONFIG.designTokens.cornerRadius.icon;
+      itemStack.addSpacer(sizes.spacing);
+    }
+
     // Rating badge
     if (item.rating !== undefined && item.rating !== null) {
       const displayText = item.rating === "" ? "NEW" : item.rating.toString();
@@ -1091,6 +1175,7 @@ class IMDbDataSource extends DataSource {
     const detailParts = [];
     if (item.subtitle) detailParts.push(item.subtitle);
     if (item.genre) detailParts.push(item.genre.split(",")[0]);
+    if (item.numVotes) detailParts.push(FormatUtils.formatNumber(item.numVotes) + " votes");
     const subtitleText = textStack.addText(detailParts.join(" • "));
     subtitleText.font = Font.systemFont(sizes.fontSize.tertiary);
     subtitleText.textColor = CONFIG.colors.secondaryBright;
@@ -1136,6 +1221,9 @@ class SteamDataSource extends DataSource {
       profileStatuses.push({
         name: userData.profileName || username,
         status: userData.status || "offline",
+        avatarUrl: userData.avatarUrl || null,
+        profileUrl: userData.profileUrl || "",
+        totalGames: userData.totalGames || null,
       });
 
       if (userData.recentGames) {
@@ -1154,9 +1242,11 @@ class SteamDataSource extends DataSource {
     // Sort by play time and take top items
     allGames.sort((a, b) => b.hoursPlayed - a.hoursPlayed);
 
-    // Pre-load game icons
     const games = allGames.slice(0, limit);
-    await this.preloadIcons(games);
+    await Promise.all([
+      this.preloadIcons(games),
+      DataSource.preloadImages(profileStatuses, "avatarUrl", "avatar"),
+    ]);
 
     return {
       games: games,
@@ -1185,17 +1275,22 @@ class SteamDataSource extends DataSource {
       statusStack.centerAlignContent();
 
       for (const profile of data.profiles) {
-        const dotColor =
-          CONFIG.colors.steamStatus[profile.status] || CONFIG.colors.secondary;
-        const dot = statusStack.addText("●");
-        dot.font = Font.systemFont(sizes.fontSize.tertiary);
-        dot.textColor = dotColor;
+        // Avatar or fallback dot
+        if (profile.avatar) {
+          this.addCircularImage(statusStack, profile.avatar, sizes.fontSize.secondary);
+        } else {
+          const dotColor =
+            CONFIG.colors.steamStatus[profile.status] || CONFIG.colors.secondary;
+          const dot = statusStack.addText("●");
+          dot.font = Font.systemFont(sizes.fontSize.tertiary);
+          dot.textColor = dotColor;
+        }
 
         statusStack.addSpacer(3);
 
-        const statusText = statusStack.addText(
-          `${profile.name} (${profile.status})`,
-        );
+        const nameParts = [profile.name, profile.status];
+        if (profile.totalGames) nameParts.push(`${profile.totalGames} games`);
+        const statusText = statusStack.addText(nameParts.join(" · "));
         statusText.font = Font.systemFont(sizes.fontSize.tertiary);
         statusText.textColor = CONFIG.colors.secondary;
 
@@ -1326,11 +1421,13 @@ class HackerNewsDataSource extends DataSource {
 
     // Score badge with heat colors
     const badgeColor =
-      story.points >= 300
+      story.points >= 500
         ? CONFIG.colors.down
-        : story.points >= 100
-          ? CONFIG.colors.warning
-          : CONFIG.colors.secondary;
+        : story.points >= 150
+          ? CONFIG.colors.accent
+          : story.points >= 50
+            ? CONFIG.colors.warning
+            : CONFIG.colors.secondary;
     this.addBadge(itemStack, {
       text: `${story.points}`,
       color: badgeColor,
@@ -1363,7 +1460,7 @@ class GitHubDataSource extends DataSource {
   }
 
   getItemKey(item) {
-    return `${item.repoName}:${item.tagName}`;
+    return `${item.repo}:${item.tagName}`;
   }
   getItemsFromData(data) {
     return data?.releases;
@@ -1374,21 +1471,26 @@ class GitHubDataSource extends DataSource {
     const response = await this.api.fetch(this.config.endpoint, { repos });
     const limit = CONFIG.sizing[widgetSize].maxItems;
 
-    // The API returns releases directly in an array
     if (!response || !Array.isArray(response.releases)) {
       return { releases: [] };
     }
 
-    return {
-      releases: response.releases.slice(0, limit).map((release) => ({
-        repo: this.extractRepoName(release.repo),
-        tagName: release.tagName,
-        timeAgo: release.timeAgo,
-        author: release.author,
-        isPrerelease: release.isPrerelease,
-        url: release.url || "",
-      })),
-    };
+    const releases = response.releases.slice(0, limit).map((release) => ({
+      repo: this.extractRepoName(release.repo),
+      releaseName: release.name || "",
+      tagName: release.tagName,
+      timeAgo: release.timeAgo,
+      author: release.author,
+      authorAvatarUrl: release.authorAvatarUrl || null,
+      isPrerelease: release.isPrerelease,
+      url: release.url || "",
+      reactions: release.reactions || null,
+      authorAvatar: null,
+    }));
+
+    await DataSource.preloadImages(releases, "authorAvatarUrl", "authorAvatar");
+
+    return { releases };
   }
 
   extractRepoName(repoString) {
@@ -1406,7 +1508,7 @@ class GitHubDataSource extends DataSource {
     const contentStack = widget.addStack();
     contentStack.layoutVertically();
 
-    this.renderItemList(contentStack, data.releases, sizes, true);
+    this.renderItemList(contentStack, data.releases, sizes);
   }
 
   renderItem(stack, release, sizes) {
@@ -1420,28 +1522,52 @@ class GitHubDataSource extends DataSource {
     const headerStack = itemStack.addStack();
     headerStack.layoutHorizontally();
 
+    // Author avatar
+    if (release.authorAvatar) {
+      this.addCircularImage(headerStack, release.authorAvatar, sizes.fontSize.secondary);
+      headerStack.addSpacer(CONFIG.designTokens.compactSpacing);
+    }
+
     this.addNewDot(headerStack, release, sizes);
 
     const repoText = headerStack.addText(release.repo);
     repoText.font = Font.mediumSystemFont(sizes.fontSize.secondary);
     repoText.textColor = CONFIG.colors.accent;
 
-    headerStack.addSpacer(4);
+    headerStack.addSpacer(CONFIG.designTokens.compactSpacing);
 
     const tagText = headerStack.addText(release.tagName);
     tagText.font = Font.systemFont(sizes.fontSize.tertiary);
     tagText.textColor = CONFIG.colors.secondary;
 
     if (release.isPrerelease) {
-      headerStack.addSpacer(4);
+      headerStack.addSpacer(CONFIG.designTokens.compactSpacing);
       const preText = headerStack.addText("pre");
       preText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
       preText.textColor = CONFIG.colors.warning;
     }
 
-    const metaText = itemStack.addText(
-      `${release.author} • ${release.timeAgo}`,
-    );
+    // Release name (if meaningful and different from tag)
+    if (release.releaseName && release.releaseName !== release.tagName) {
+      const nameText = itemStack.addText(FormatUtils.truncate(release.releaseName, 40));
+      nameText.font = Font.systemFont(sizes.fontSize.tertiary);
+      nameText.textColor = CONFIG.colors.secondaryBright;
+      nameText.lineLimit = 1;
+    }
+
+    const metaParts = [release.author, release.timeAgo];
+
+    // Reactions summary
+    if (release.reactions && release.reactions.totalCount > 0) {
+      const reactionParts = [];
+      if (release.reactions["+1"] > 0) reactionParts.push(`👍${release.reactions["+1"]}`);
+      if (release.reactions.heart > 0) reactionParts.push(`❤️${release.reactions.heart}`);
+      if (release.reactions.hooray > 0) reactionParts.push(`🎉${release.reactions.hooray}`);
+      if (release.reactions.rocket > 0) reactionParts.push(`🚀${release.reactions.rocket}`);
+      if (reactionParts.length > 0) metaParts.push(reactionParts.join(""));
+    }
+
+    const metaText = itemStack.addText(metaParts.join(" • "));
     metaText.font = Font.systemFont(sizes.fontSize.tertiary);
     metaText.textColor = CONFIG.colors.secondary;
   }
@@ -1654,7 +1780,7 @@ class TimelineDataSource extends DataSource {
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(FormatUtils.truncate(event.title, 40));
+    const titleText = textStack.addText(FormatUtils.truncate(event.title, 55));
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
@@ -1680,17 +1806,24 @@ class BookmarksDataSource extends DataSource {
   }
 
   async fetchData(widgetSize) {
-    const params = this.category ? { tag: this.category } : {};
-    const response = await this.api.fetch(this.config.endpoint, params);
+    const response = await this.api.fetch(this.config.endpoint);
 
     if (!response || !Array.isArray(response.bookmarks)) {
       return { bookmarks: [] };
     }
 
+    let bookmarks = response.bookmarks;
+    if (this.category) {
+      const tag = this.category.toLowerCase();
+      bookmarks = bookmarks.filter((b) =>
+        Array.isArray(b.tags) && b.tags.some((t) => t.toLowerCase() === tag),
+      );
+    }
+
     const limit = CONFIG.sizing[widgetSize].maxItems;
 
     return {
-      bookmarks: response.bookmarks.slice(0, limit).map((b) => ({
+      bookmarks: bookmarks.slice(0, limit).map((b) => ({
         title: FormatUtils.truncate(b.title || b.url, 45),
         description: FormatUtils.truncate(b.description || "", 60),
         tags: b.tags || [],
@@ -1820,7 +1953,7 @@ class BooksDataSource extends DataSource {
       coverStack.centerAlignContent();
 
       const cover = coverStack.addImage(data.coverImage);
-      cover.cornerRadius = 8;
+      cover.cornerRadius = CONFIG.designTokens.cornerRadius.cover;
       cover.centerAlignImage();
 
       if (widgetSize === "large") {
@@ -1878,7 +2011,7 @@ class BooksDataSource extends DataSource {
       coverStack.centerAlignContent();
 
       const cover = coverStack.addImage(data.coverImage);
-      cover.cornerRadius = 6;
+      cover.cornerRadius = CONFIG.designTokens.cornerRadius.cover;
       cover.centerAlignImage();
       cover.imageSize = new Size(40, 60);
     }
@@ -1892,7 +2025,7 @@ class BooksDataSource extends DataSource {
       iconStack.centerAlignContent();
 
       const icon = iconStack.addImage(data.goodreadsIcon);
-      icon.cornerRadius = 8;
+      icon.cornerRadius = CONFIG.designTokens.cornerRadius.cover;
       icon.centerAlignImage();
       icon.imageSize = new Size(25, 25);
       icon.url = "goodreads://";
@@ -1992,12 +2125,6 @@ class AstronomyDataSource extends DataSource {
     return AstronomyDataSource.moonPhases[index];
   }
 
-  formatTime(dateOrString) {
-    const d =
-      dateOrString instanceof Date ? dateOrString : new Date(dateOrString);
-    return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-  }
-
   isEmpty(data) {
     return !data || !data.sunrise;
   }
@@ -2041,9 +2168,9 @@ class AstronomyDataSource extends DataSource {
     const sunriseIcon = row.addImage(SFSymbol.named("sunrise.fill").image);
     sunriseIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     sunriseIcon.tintColor = CONFIG.colors.warning;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
-    const sunriseText = row.addText(this.formatTime(data.sunrise));
+    const sunriseText = row.addText(FormatUtils.formatTime(data.sunrise));
     sunriseText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     sunriseText.textColor = CONFIG.colors.primary;
 
@@ -2052,9 +2179,9 @@ class AstronomyDataSource extends DataSource {
     const sunsetIcon = row.addImage(SFSymbol.named("sunset.fill").image);
     sunsetIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     sunsetIcon.tintColor = CONFIG.colors.sunset;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
-    const sunsetText = row.addText(this.formatTime(data.sunset));
+    const sunsetText = row.addText(FormatUtils.formatTime(data.sunset));
     sunsetText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     sunsetText.textColor = CONFIG.colors.primary;
   }
@@ -2068,7 +2195,7 @@ class AstronomyDataSource extends DataSource {
     const moonIcon = row.addImage(SFSymbol.named(moonInfo.icon).image);
     moonIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     moonIcon.tintColor = CONFIG.colors.primary;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
     const moonText = row.addText(moonInfo.name);
     moonText.font = Font.mediumSystemFont(sizes.fontSize.primary);
@@ -2089,7 +2216,7 @@ class AstronomyDataSource extends DataSource {
     const uvIcon = row.addImage(SFSymbol.named("sun.max.fill").image);
     uvIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     uvIcon.tintColor = CONFIG.colors.warning;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
     const label = row.addText("UV Index");
     label.font = Font.systemFont(sizes.fontSize.secondary);
@@ -2116,10 +2243,10 @@ class AstronomyDataSource extends DataSource {
     const ghIcon = row.addImage(SFSymbol.named("camera.filters").image);
     ghIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     ghIcon.tintColor = CONFIG.colors.golden;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
-    const morningText = `${this.formatTime(data.goldenMorning.start)}–${this.formatTime(data.goldenMorning.end)}`;
-    const eveningText = `${this.formatTime(data.goldenEvening.start)}–${this.formatTime(data.goldenEvening.end)}`;
+    const morningText = `${FormatUtils.formatTime(data.goldenMorning.start)}–${FormatUtils.formatTime(data.goldenMorning.end)}`;
+    const eveningText = `${FormatUtils.formatTime(data.goldenEvening.start)}–${FormatUtils.formatTime(data.goldenEvening.end)}`;
 
     const text = row.addText(`${morningText}  ${eveningText}`);
     text.font = Font.systemFont(sizes.fontSize.secondary);
@@ -2136,7 +2263,7 @@ class AstronomyDataSource extends DataSource {
     const tempIcon = row.addImage(SFSymbol.named("thermometer.medium").image);
     tempIcon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
     tempIcon.tintColor = CONFIG.colors.accent;
-    row.addSpacer(4);
+    row.addSpacer(CONFIG.designTokens.compactSpacing);
 
     const tempText = row.addText(`${Math.round(data.temperature)}°C`);
     tempText.font = Font.mediumSystemFont(sizes.fontSize.primary);
@@ -2430,13 +2557,14 @@ class StatusBoardDataSource extends DataSource {
       hackernews: () => data.stories?.[0]?.title,
       github: () =>
         data.releases?.[0] &&
-        `${data.releases[0].repoName} ${data.releases[0].tagName}`,
+        `${data.releases[0].repo} ${data.releases[0].tagName}`,
       wikipedia: () => data.edits?.[0]?.title,
       timeline: () => data.events?.[0]?.title,
       bookmarks: () => data.bookmarks?.[0]?.title,
       bluesky: () =>
         data.posts?.[0] && FormatUtils.truncate(data.posts[0].text, 60),
       astronomy: () => "Astronomy data",
+      "dhbw-timetable": () => data.events?.[0]?.name,
     };
     const extractor = map[sourceName];
     return extractor ? extractor() || null : null;
@@ -2509,6 +2637,180 @@ class StatusBoardDataSource extends DataSource {
   }
 }
 
+class DHBWTimetableDataSource extends DataSource {
+  isEmpty(data) {
+    return !data.events || data.events.length === 0;
+  }
+
+  getItemKey(item) {
+    return `${item.id}`;
+  }
+
+  getItemsFromData(data) {
+    return data?.events;
+  }
+
+  async fetchData(widgetSize) {
+    const response = await this.api.fetch(this.config.endpoint);
+
+    if (!response || !Array.isArray(response.events)) {
+      return { events: [], courseName: "", courseCode: "" };
+    }
+
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    let events = response.events
+      .filter((e) => e.date >= todayStr)
+      .map((e) => ({
+        id: e.id,
+        name: e.name,
+        type: e.type || "",
+        date: e.date,
+        startTime: e.startTime,
+        endTime: e.endTime,
+        lecturer: e.lecturer || "",
+        rooms: e.rooms || [],
+        course: e.course || "",
+      }))
+      .sort((a, b) => {
+        const dateCmp = a.date.localeCompare(b.date);
+        if (dateCmp !== 0) return dateCmp;
+        return a.startTime.localeCompare(b.startTime);
+      });
+
+    const limit = CONFIG.sizing[widgetSize].maxItems;
+
+    return {
+      events: events.slice(0, limit),
+      courseName: response.course?.name || "",
+      courseCode: response.courseCode || "",
+    };
+  }
+
+  renderWidget(widget, data, widgetSize) {
+    const sizes = CONFIG.sizing[widgetSize];
+
+    const title = data.courseName || "DHBW Timetable";
+    this.addHeader(widget, title, sizes);
+    widget.addSpacer(sizes.spacing);
+
+    if (data.events.length === 0) {
+      const emptyText = widget.addText("No upcoming events");
+      emptyText.font = Font.systemFont(sizes.fontSize.secondary);
+      emptyText.textColor = CONFIG.colors.secondary;
+      emptyText.centerAlignText();
+      return;
+    }
+
+    const contentStack = widget.addStack();
+    contentStack.layoutVertically();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    let lastDate = null;
+    data.events.forEach((event, index) => {
+      if (event.date !== lastDate) {
+        if (lastDate !== null) {
+          contentStack.addSpacer(sizes.spacing);
+        }
+        const dateLabel = contentStack.addText(FormatUtils.formatDateLabel(event.date, today, tomorrow));
+        dateLabel.font = Font.boldSystemFont(sizes.fontSize.secondary);
+        dateLabel.textColor = CONFIG.colors.accent;
+        contentStack.addSpacer(CONFIG.designTokens.compactSpacing);
+        lastDate = event.date;
+      }
+
+      this.renderItem(contentStack, event, sizes);
+
+      if (index < data.events.length - 1) {
+        const nextEvent = data.events[index + 1];
+        if (nextEvent.date === event.date) {
+          contentStack.addSpacer(CONFIG.designTokens.compactSpacing);
+        }
+      }
+    });
+  }
+
+  renderItem(stack, event, sizes) {
+    const itemStack = stack.addStack();
+    itemStack.layoutHorizontally();
+
+    const timeColumn = itemStack.addStack();
+    timeColumn.layoutVertically();
+    timeColumn.setPadding(0, 0, 0, 0);
+    timeColumn.size = new Size(
+      sizes.iconSize * 3,
+      0,
+    );
+
+    const startText = timeColumn.addText(FormatUtils.formatTime(event.startTime));
+    startText.font = Font.semiboldSystemFont(sizes.fontSize.secondary);
+    startText.textColor = CONFIG.colors.primary;
+    startText.rightAlignText();
+
+    const endText = timeColumn.addText(FormatUtils.formatTime(event.endTime));
+    endText.font = Font.systemFont(sizes.fontSize.tertiary);
+    endText.textColor = CONFIG.colors.secondary;
+    endText.rightAlignText();
+
+    const divider = itemStack.addStack();
+    divider.layoutVertically();
+    divider.centerAlignContent();
+    divider.setPadding(0, CONFIG.designTokens.compactSpacing, 0, CONFIG.designTokens.compactSpacing);
+
+    const dot = divider.addStack();
+    dot.size = new Size(sizes.fontSize.tertiary, sizes.fontSize.tertiary);
+    dot.cornerRadius = sizes.fontSize.tertiary / 2;
+    dot.backgroundColor =
+      CONFIG.colors.dhbwTypes[event.type] || CONFIG.colors.accent;
+
+    itemStack.addSpacer(CONFIG.designTokens.compactSpacing);
+
+    const textStack = itemStack.addStack();
+    textStack.layoutVertically();
+
+    const titleRow = textStack.addStack();
+    titleRow.layoutHorizontally();
+    titleRow.centerAlignContent();
+
+    const nameText = titleRow.addText(FormatUtils.truncate(event.name, 30));
+    nameText.font = Font.mediumSystemFont(sizes.fontSize.primary);
+    nameText.textColor = CONFIG.colors.primary;
+    nameText.lineLimit = 1;
+
+    if (event.type) {
+      titleRow.addSpacer(CONFIG.designTokens.compactSpacing);
+      this.addBadge(titleRow, {
+        text: event.type,
+        color:
+          CONFIG.colors.dhbwTypes[event.type] ||
+          CONFIG.colors.accent,
+        sizes,
+      });
+    }
+
+    const detailParts = [];
+    if (event.rooms && event.rooms.length > 0) {
+      detailParts.push(event.rooms.join(", "));
+    }
+    if (event.lecturer) {
+      detailParts.push(event.lecturer);
+    }
+    if (detailParts.length > 0) {
+      const detailText = textStack.addText(detailParts.join(" · "));
+      detailText.font = Font.systemFont(sizes.fontSize.tertiary);
+      detailText.textColor = CONFIG.colors.secondary;
+      detailText.lineLimit = 1;
+    }
+
+    itemStack.addSpacer();
+  }
+}
+
 // ============================================================================
 // DATA SOURCE FACTORY
 // ============================================================================
@@ -2528,6 +2830,7 @@ class DataSourceFactory {
     bluesky: BlueskyDataSource,
     activity: ActivityDataSource,
     statusboard: StatusBoardDataSource,
+    "dhbw-timetable": DHBWTimetableDataSource,
   };
 
   static create(sourceName, apiClient) {
