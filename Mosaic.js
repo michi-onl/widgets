@@ -846,10 +846,10 @@ class DataSource {
 
   addNewDot(stack, item, sizes) {
     if (!item._isNew) return;
-    const dot = stack.addText("●");
-    dot.font = Font.systemFont(sizes.fontSize.tertiary);
-    dot.textColor = CONFIG.colors.up;
-    stack.addSpacer(3);
+    const label = stack.addText("new");
+    label.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+    label.textColor = CONFIG.colors.up;
+    stack.addSpacer(4);
   }
 
   static async preloadImages(items, urlKey, cacheKey) {
@@ -989,23 +989,27 @@ class BillboardDataSource extends DataSource {
       itemStack.addSpacer(sizes.spacing);
     }
 
-    // Position indicator
-    const positionStack = itemStack.addStack();
-    positionStack.layoutVertically();
-    positionStack.centerAlignContent();
-
-    this.addPositionIndicator(positionStack, item, sizes);
-
-    itemStack.addSpacer(sizes.spacing);
-
     // Text content
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(FormatUtils.truncate(item.title, 35));
+    const titleRow = textStack.addStack();
+    titleRow.layoutHorizontally();
+    titleRow.centerAlignContent();
+
+    const titleText = titleRow.addText(FormatUtils.truncate(item.title, 28));
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
+
+    titleRow.addSpacer(sizes.spacing);
+    const bbLastWeek = item.metadata.last_week;
+    const bbCurrent = item.position;
+    const bbChar = bbLastWeek === 0 ? "★" : bbCurrent < bbLastWeek ? "↑" : bbCurrent > bbLastWeek ? "↓" : "−";
+    const bbColor = bbLastWeek === 0 ? CONFIG.colors.new : bbCurrent < bbLastWeek ? CONFIG.colors.up : bbCurrent > bbLastWeek ? CONFIG.colors.down : CONFIG.colors.unchanged;
+    const indicatorText = titleRow.addText(bbChar);
+    indicatorText.font = Font.systemFont(sizes.fontSize.secondary);
+    indicatorText.textColor = bbColor;
 
     const subtitleText = textStack.addText(
       FormatUtils.truncate(item.subtitle, 30),
@@ -1021,31 +1025,6 @@ class BillboardDataSource extends DataSource {
     }
 
     itemStack.addSpacer();
-  }
-
-  addPositionIndicator(stack, item, sizes) {
-    const lastWeek = item.metadata.last_week;
-    const current = item.position;
-
-    let symbol, color;
-
-    if (lastWeek === 0) {
-      symbol = "star.circle";
-      color = CONFIG.colors.new;
-    } else if (current < lastWeek) {
-      symbol = "arrow.up.circle";
-      color = CONFIG.colors.up;
-    } else if (current > lastWeek) {
-      symbol = "arrow.down.circle";
-      color = CONFIG.colors.down;
-    } else {
-      symbol = "minus.circle";
-      color = CONFIG.colors.unchanged;
-    }
-
-    const icon = stack.addImage(SFSymbol.named(symbol).image);
-    icon.imageSize = new Size(sizes.iconSize, sizes.iconSize);
-    icon.tintColor = color;
   }
 
   getColumnLayout(widgetSize) {
@@ -1152,25 +1131,25 @@ class IMDbDataSource extends DataSource {
       itemStack.addSpacer(sizes.spacing);
     }
 
-    // Rating badge
-    if (item.rating !== undefined && item.rating !== null) {
-      const displayText = item.rating === "" ? "NEW" : item.rating.toString();
-      this.addBadge(itemStack, {
-        text: displayText,
-        color: CONFIG.colors.accent,
-        sizes,
-      });
-      itemStack.addSpacer(sizes.spacing);
-    }
-
     // Text content
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(item.title);
+    const titleRow = textStack.addStack();
+    titleRow.layoutHorizontally();
+    titleRow.centerAlignContent();
+
+    const titleText = titleRow.addText(item.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.secondary);
     titleText.textColor = CONFIG.colors.primary;
     titleText.lineLimit = 1;
+
+    if (item.rating !== undefined && item.rating !== null) {
+      titleRow.addSpacer(sizes.spacing);
+      const ratingText = titleRow.addText(item.rating === "" ? "NEW" : item.rating.toString());
+      ratingText.font = Font.boldSystemFont(sizes.fontSize.tertiary);
+      ratingText.textColor = CONFIG.colors.accent;
+    }
 
     const detailParts = [];
     if (item.subtitle) detailParts.push(item.subtitle);
@@ -1390,24 +1369,8 @@ class HackerNewsDataSource extends DataSource {
 
     const contentStack = widget.addStack();
 
-    // For medium widgets, use two columns to fit more items
-    if (widgetSize === "medium" && data.stories.length > 3) {
-      contentStack.layoutHorizontally();
-      const mid = Math.ceil(data.stories.length / 2);
-
-      const firstColumn = contentStack.addStack();
-      firstColumn.layoutVertically();
-      this.renderItemList(firstColumn, data.stories.slice(0, mid), sizes);
-
-      contentStack.addSpacer(sizes.spacing * 2);
-
-      const secondColumn = contentStack.addStack();
-      secondColumn.layoutVertically();
-      this.renderItemList(secondColumn, data.stories.slice(mid), sizes);
-    } else {
-      contentStack.layoutVertically();
-      this.renderItemList(contentStack, data.stories, sizes);
-    }
+    contentStack.layoutVertically();
+    this.renderItemList(contentStack, data.stories, sizes);
   }
 
   renderItem(stack, story, sizes) {
@@ -1422,7 +1385,7 @@ class HackerNewsDataSource extends DataSource {
     // Score badge with heat colors
     const badgeColor =
       story.points >= 500
-        ? CONFIG.colors.down
+        ? CONFIG.colors.sunset
         : story.points >= 150
           ? CONFIG.colors.accent
           : story.points >= 50
@@ -1780,10 +1743,10 @@ class TimelineDataSource extends DataSource {
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(FormatUtils.truncate(event.title, 55));
+    const titleText = textStack.addText(event.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
-    titleText.lineLimit = 1;
+    titleText.lineLimit = 2;
 
     const timeText = textStack.addText(FormatUtils.formatTimeAgo(event.date));
     timeText.font = Font.systemFont(sizes.fontSize.tertiary);
@@ -2248,7 +2211,7 @@ class AstronomyDataSource extends DataSource {
     const morningText = `${FormatUtils.formatTime(data.goldenMorning.start)}–${FormatUtils.formatTime(data.goldenMorning.end)}`;
     const eveningText = `${FormatUtils.formatTime(data.goldenEvening.start)}–${FormatUtils.formatTime(data.goldenEvening.end)}`;
 
-    const text = row.addText(`${morningText}  ${eveningText}`);
+    const text = row.addText(`↑ ${morningText}  ↓ ${eveningText}`);
     text.font = Font.systemFont(sizes.fontSize.secondary);
     text.textColor = CONFIG.colors.primary;
   }
@@ -2468,10 +2431,10 @@ class ActivityDataSource extends DataSource {
     const textStack = itemStack.addStack();
     textStack.layoutVertically();
 
-    const titleText = textStack.addText(FormatUtils.truncate(item.title, 45));
+    const titleText = textStack.addText(item.title);
     titleText.font = Font.mediumSystemFont(sizes.fontSize.primary);
     titleText.textColor = CONFIG.colors.primary;
-    titleText.lineLimit = 1;
+    titleText.lineLimit = 2;
 
     const detailText = textStack.addText(item.detail);
     detailText.font = Font.systemFont(sizes.fontSize.tertiary);
@@ -3101,7 +3064,7 @@ class Mosaic {
 
     const timeText = footer.addText(timeString);
     timeText.font = Font.systemFont(sizes.fontSize.tertiary);
-    timeText.textColor = CONFIG.colors.tertiary;
+    timeText.textColor = new Color(Device.isUsingDarkAppearance() ? "#636366" : "#C7C7CC", 0.5);
     timeText.rightAlignText();
   }
 
