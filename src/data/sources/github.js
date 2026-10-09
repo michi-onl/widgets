@@ -23,17 +23,21 @@ class GitHubDataSource extends DataSource {
 
     if (!response || !Array.isArray(response.releases)) return [];
 
-    return response.releases.slice(0, limit).map((release) => ({
-      repo: this.extractRepoName(release.repo),
-      releaseName: release.name || "",
-      tagName: release.tagName,
-      timeAgo: release.timeAgo,
-      author: release.author,
-      authorAvatarUrl: release.authorAvatarUrl || null,
-      isPrerelease: release.isPrerelease,
-      url: release.url || "",
-      authorAvatar: null,
-    }));
+    // A repo the API couldn't read comes back as `{ repo, error }`; skip it.
+    return response.releases
+      .filter((release) => !release.error)
+      .slice(0, limit)
+      .map((release) => ({
+        repo: this.extractRepoName(release.repo),
+        releaseName: release.name || "",
+        tagName: release.tagName,
+        timeAgo: release.timeAgo,
+        author: release.author,
+        authorAvatarUrl: release.authorAvatarUrl || null,
+        isPrerelease: release.isPrerelease,
+        url: release.url || "",
+        authorAvatar: null,
+      }));
   }
 
   extractRepoName(repoString) {

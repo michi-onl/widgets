@@ -1373,7 +1373,7 @@ var require_github = __commonJS({
         const response = await this.api.fetch(this.config.endpoint, { repos });
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         if (!response || !Array.isArray(response.releases)) return [];
-        return response.releases.slice(0, limit).map((release) => ({
+        return response.releases.filter((release) => !release.error).slice(0, limit).map((release) => ({
           repo: this.extractRepoName(release.repo),
           releaseName: release.name || "",
           tagName: release.tagName,

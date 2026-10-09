@@ -54,6 +54,20 @@ test("GitHubDataSource.fetchReleases rejects clearly when no repos are configure
   );
 });
 
+test("GitHubDataSource.fetchReleases skips repos the API could not read", async () => {
+  const api = {
+    fetch: async () => ({
+      releases: [
+        { repo: "owner/broken", error: "No such repo, or it has no releases" },
+        { repo: "owner/tool", tagName: "v1.0.0", author: "octo" },
+      ],
+    }),
+  };
+  const source = new GitHubDataSource({ ...CONFIG.sources.github, repos: ["owner/tool"] }, api);
+  const releases = await source.fetchReleases("medium");
+  assert.deepEqual(releases.map((r) => r.tagName), ["v1.0.0"]);
+});
+
 test("BooksDataSource.fetchData rejects clearly when no isbn is available", async () => {
   const source = new BooksDataSource(
     { ...CONFIG.sources.books, defaultIsbn: undefined },
