@@ -10,6 +10,11 @@ class HackerNewsDataSource extends DataSource {
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
+    // `null` when the scrape failed; throwing falls back to the cached widget.
+    if (!Array.isArray(response.stories)) {
+      throw new Error("Hacker News is unavailable right now");
+    }
+
     const limit = CONFIG.sizing[widgetSize].maxItems;
 
     // API returns stories array with different field names

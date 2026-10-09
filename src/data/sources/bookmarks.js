@@ -10,8 +10,9 @@ class BookmarksDataSource extends DataSource {
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
+    // `null` when Linkding failed; throwing falls back to the cached widget.
     if (!response || !Array.isArray(response.bookmarks)) {
-      return { bookmarks: [] };
+      throw new Error("Bookmarks are unavailable right now");
     }
 
     let bookmarks = response.bookmarks;

@@ -940,7 +940,7 @@ var require_billboard = __commonJS({
       async fetchData(widgetSize) {
         const response = await this.api.fetch(this.config.endpoint);
         if (!Array.isArray(response.albums)) {
-          throw new Error("Invalid Billboard data structure");
+          throw new Error("Billboard is unavailable right now");
         }
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         const items = response.albums.slice(0, limit).map((item) => ({
@@ -1053,6 +1053,9 @@ var require_imdb = __commonJS({
       }
       async fetchData(widgetSize) {
         const response = await this.api.fetch(this.config.endpoint);
+        if (!Array.isArray(response.movies) && !Array.isArray(response.tv_shows)) {
+          throw new Error("TMDB is unavailable right now");
+        }
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         const half = Math.ceil(limit / 2);
         const movies = Array.isArray(response.movies) ? response.movies.slice(0, half).map((m) => this.formatItem(m, "movie")) : [];
@@ -1178,7 +1181,8 @@ var require_steam = __commonJS({
         const response = await this.api.fetch(this.config.endpoint);
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         const allGames = [];
-        for (const userData of Object.values(response)) {
+        const profiles = "degraded" in response ? response.profiles : response;
+        for (const userData of Object.values(profiles)) {
           if (userData.recentGames) {
             userData.recentGames.forEach((game) => {
               allGames.push({
@@ -1262,6 +1266,9 @@ var require_hacker_news = __commonJS({
       }
       async fetchData(widgetSize) {
         const response = await this.api.fetch(this.config.endpoint);
+        if (!Array.isArray(response.stories)) {
+          throw new Error("Hacker News is unavailable right now");
+        }
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         return {
           stories: response.stories.slice(0, limit).map((story) => ({
@@ -1596,7 +1603,7 @@ var require_bookmarks = __commonJS({
       async fetchData(widgetSize) {
         const response = await this.api.fetch(this.config.endpoint);
         if (!response || !Array.isArray(response.bookmarks)) {
-          return { bookmarks: [] };
+          throw new Error("Bookmarks are unavailable right now");
         }
         let bookmarks = response.bookmarks;
         if (this.category) {

@@ -14,7 +14,9 @@ class SteamDataSource extends DataSource {
     const limit = CONFIG.sizing[widgetSize].maxItems;
     const allGames = [];
 
-    for (const userData of Object.values(response)) {
+    // API v3 wraps the profiles in `{ profiles, degraded }`; v2 sent them bare.
+    const profiles = "degraded" in response ? response.profiles : response;
+    for (const userData of Object.values(profiles)) {
       if (userData.recentGames) {
         userData.recentGames.forEach((game) => {
           allGames.push({

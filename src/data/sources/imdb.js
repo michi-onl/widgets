@@ -13,6 +13,11 @@ class IMDbDataSource extends DataSource {
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
+    // Each list is `null` when TMDB failed for it.
+    if (!Array.isArray(response.movies) && !Array.isArray(response.tv_shows)) {
+      throw new Error("TMDB is unavailable right now");
+    }
+
     const limit = CONFIG.sizing[widgetSize].maxItems;
     const half = Math.ceil(limit / 2);
 

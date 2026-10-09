@@ -10,8 +10,9 @@ class BillboardDataSource extends DataSource {
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
+    // `null` when the scrape failed; throwing falls back to the cached widget.
     if (!Array.isArray(response.albums)) {
-      throw new Error("Invalid Billboard data structure");
+      throw new Error("Billboard is unavailable right now");
     }
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
