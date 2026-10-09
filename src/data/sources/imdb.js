@@ -16,19 +16,12 @@ class IMDbDataSource extends DataSource {
     const limit = CONFIG.sizing[widgetSize].maxItems;
     const half = Math.ceil(limit / 2);
 
-    const movies =
-      response.movies?.data && Array.isArray(response.movies.data)
-        ? response.movies.data
-            .slice(0, half)
-            .map((m) => this.formatItem(m, "movie"))
-        : [];
+    const movies = Array.isArray(response.movies)
+      ? response.movies.slice(0, half).map((m) => this.formatItem(m, "movie"))
+      : [];
     const tvShows =
-      widgetSize !== "small" &&
-      response.tv_shows?.data &&
-      Array.isArray(response.tv_shows.data)
-        ? response.tv_shows.data
-            .slice(0, half)
-            .map((t) => this.formatItem(t, "tv"))
+      widgetSize !== "small" && Array.isArray(response.tv_shows)
+        ? response.tv_shows.slice(0, half).map((t) => this.formatItem(t, "tv"))
         : [];
 
     await DataSource.preloadImages(

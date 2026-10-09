@@ -19,10 +19,10 @@ class HackerNewsDataSource extends DataSource {
         points: story.points,
         comments: story.numComments,
         author: story.author,
-        timeAgo: story.timePosted,
+        timeAgo: FormatUtils.formatTimeAgo(story.timestamp),
         url: story.url,
         domain: story.domain || "",
-        hnUrl: story.hnUrl || "",
+        hnUrl: `https://news.ycombinator.com/item?id=${story.id}`,
       })),
     };
   }

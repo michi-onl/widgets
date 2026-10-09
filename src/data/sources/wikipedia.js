@@ -8,19 +8,14 @@ class WikipediaDataSource extends DataSource {
   }
 
   async fetchData(widgetSize) {
-    const body = {
-      usernames: this.config.usernames,
-      tokens: this.config.tokens,
-      languages: this.config.languages,
+    // The API reads the watchlist tokens configured on the server.
+    const response = await this.api.fetch(this.config.endpoint, {
       hours: this.config.hours || 72,
       limit: Math.min(
         this.config.limit || Infinity,
         CONFIG.sizing[widgetSize].maxItems,
       ),
-    };
-
-    // Use POST method as required by the API
-    const response = await this.api.post(this.config.endpoint, body);
+    });
 
     // Safely handle response
     if (!response || !Array.isArray(response.edits)) {
@@ -32,7 +27,7 @@ class WikipediaDataSource extends DataSource {
         title: FormatUtils.truncate(edit.title, 40),
         language: edit.language,
         user: edit.creator,
-        timeAgo: edit.timeAgo,
+        timeAgo: FormatUtils.formatTimeAgo(edit.publishedAt),
         comment: FormatUtils.truncate(
           FormatUtils.stripHtml(edit.description || ""),
           60,

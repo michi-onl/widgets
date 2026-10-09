@@ -4,7 +4,6 @@ require("./scriptable-stubs");
 const {
   CONFIG,
   StatusBoardDataSource,
-  SteamDataSource,
   GitHubDataSource,
   BooksDataSource,
 } = require("../src/index.js");
@@ -39,11 +38,6 @@ test("extractTopItem formats a representative item per source", () => {
   );
   assert.equal(board.extractTopItem("unknown-source", { anything: true }), null);
   assert.equal(board.extractTopItem("books", null), null);
-});
-
-test("SteamDataSource.fetchData rejects clearly when no profiles are configured", async () => {
-  const source = new SteamDataSource({ ...CONFIG.sources.steam, profiles: [] }, null);
-  await assert.rejects(() => source.fetchData("medium"), /Set steam profiles in CONFIG/);
 });
 
 test("GitHubDataSource.fetchReleases rejects clearly when no repos are configured", async () => {

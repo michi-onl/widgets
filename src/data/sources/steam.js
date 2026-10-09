@@ -8,11 +8,8 @@ class SteamDataSource extends DataSource {
   }
 
   async fetchData(widgetSize) {
-    if (!this.config.profiles || this.config.profiles.length === 0) {
-      throw new Error("Set steam profiles in CONFIG");
-    }
-    const profiles = this.config.profiles.join(",");
-    const response = await this.api.fetch(this.config.endpoint, { profiles });
+    // The API serves the profiles configured on the server.
+    const response = await this.api.fetch(this.config.endpoint);
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
     const allGames = [];
@@ -22,8 +19,8 @@ class SteamDataSource extends DataSource {
         userData.recentGames.forEach((game) => {
           allGames.push({
             name: game.name,
-            hoursPlayed: game.hoursPlayedNumeric || 0,
-            lastPlayedShort: game.lastPlayedShort,
+            hoursPlayed: game.hoursPlayed || 0,
+            lastPlayedShort: game.lastPlayed,
             iconUrl: game.iconUrl || null,
             storeUrl: game.storeUrl || "",
           });

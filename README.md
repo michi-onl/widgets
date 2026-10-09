@@ -47,16 +47,6 @@ Long-press your home screen, tap +, search for Scriptable, pick a widget size. E
 
 Each field in `widget-config.json` explained.
 
-### sources.steam
-
-Steam usernames whose recent games you want to track. Use the vanity URL name from your Steam profile page (the part after `/id/`), or a numeric Steam ID.
-
-```json
-"steam": {
-  "profiles": ["gabelogannewell", "player2"]
-}
-```
-
 ### sources.github
 
 GitHub repositories to watch for new releases. Use `owner/repo` format, the same as in the GitHub URL.
@@ -64,22 +54,6 @@ GitHub repositories to watch for new releases. Use `owner/repo` format, the same
 ```json
 "github": {
   "repos": ["anthropics/claude-code", "nicklockwood/SwiftFormat"]
-}
-```
-
-### sources.wikipedia
-
-Track recent edits on your Wikipedia watchlist.
-
-- **usernames** - Your Wikipedia username. This is the same across all language wikis.
-- **tokens** - Your watchlist token. To find it: go to any Wikipedia, click Preferences, open the Watchlist tab, scroll to "Watchlist token". Copy the string shown there.
-- **languages** - Which language wiki to check. Use the two-letter code: `"en"` for English Wikipedia, `"de"` for German, etc. For multiple wikis, separate with commas: `"en,de"`.
-
-```json
-"wikipedia": {
-  "usernames": "Example",
-  "tokens": "abc123def456",
-  "languages": "en,de"
 }
 ```
 

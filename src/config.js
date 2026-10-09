@@ -162,7 +162,7 @@ const CONFIG = {
     },
     imdb: {
       name: "IMDb Popular",
-      endpoint: "/imdb",
+      endpoint: "/tmdb-trending",
       icon: "tv.fill",
       color: new Color("#F5C518"), // IMDb's own brand yellow
       refreshHours: 12,
@@ -175,7 +175,6 @@ const CONFIG = {
       color: new Color("#66C0F4"), // Steam's own brand blue
       refreshHours: 6,
       urlScheme: "steam://",
-      profiles: [], // Set via widget-config.json
     },
     hackernews: {
       name: "Hacker News",

@@ -109,13 +109,6 @@ class ConfigManager {
 
   static getEditableFields(sourceName) {
     const fieldMap = {
-      steam: [
-        {
-          key: "profiles",
-          label: "Steam profiles (comma-separated)",
-          isArray: true,
-        },
-      ],
       github: [
         {
           key: "repos",
@@ -136,11 +129,6 @@ class ConfigManager {
         },
       ],
       books: [{ key: "defaultIsbn", label: "Default ISBN" }],
-      wikipedia: [
-        { key: "usernames", label: "Username" },
-        { key: "tokens", label: "Watchlist token" },
-        { key: "languages", label: "Languages (e.g. en,de)" },
-      ],
     };
     return fieldMap[sourceName] || [];
   }

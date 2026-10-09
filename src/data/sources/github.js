@@ -31,7 +31,7 @@ class GitHubDataSource extends DataSource {
         repo: this.extractRepoName(release.repo),
         releaseName: release.name || "",
         tagName: release.tagName,
-        timeAgo: release.timeAgo,
+        timeAgo: FormatUtils.formatTimeAgo(release.publishedAt),
         author: release.author,
         authorAvatarUrl: release.authorAvatarUrl || null,
         isPrerelease: release.isPrerelease,

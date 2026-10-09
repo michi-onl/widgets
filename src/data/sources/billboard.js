@@ -10,12 +10,12 @@ class BillboardDataSource extends DataSource {
   async fetchData(widgetSize) {
     const response = await this.api.fetch(this.config.endpoint);
 
-    if (!response.music?.data) {
+    if (!Array.isArray(response.albums)) {
       throw new Error("Invalid Billboard data structure");
     }
 
     const limit = CONFIG.sizing[widgetSize].maxItems;
-    const items = response.music.data.slice(0, limit).map((item) => ({
+    const items = response.albums.slice(0, limit).map((item) => ({
       position: item.position,
       title: FormatUtils.cleanTitle(item.title),
       subtitle: item.artist,
@@ -30,8 +30,8 @@ class BillboardDataSource extends DataSource {
     await DataSource.preloadImages(items, "coverUrl", "cover");
 
     return {
-      title: response.music.data_title || "Billboard 200",
-      subtitle: response.music.data_desc || "",
+      title: "Billboard 200",
+      subtitle: "",
       items,
     };
   }

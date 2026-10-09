@@ -1,16 +1,8 @@
 {
   "version": 1,
   "sources": {
-    "steam": {
-      "profiles": ["steam-username-1", "steam-username-2"]
-    },
     "github": {
       "repos": ["owner/repo", "another-owner/another-repo"]
-    },
-    "wikipedia": {
-      "usernames": "your-wikipedia-username",
-      "tokens": "your-watchlist-token",
-      "languages": "en"
     },
     "astronomy": {
       "latitude": "48.2082",

@@ -43,7 +43,6 @@ function reset() {
   keychain = new Map();
   ConfigManager._loaded = false;
   CONFIG.apiToken = "";
-  CONFIG.sources.steam.profiles = [];
   CONFIG.sources.github.repos = [];
 }
 
@@ -51,12 +50,12 @@ test("load merges saved source overrides into CONFIG", async () => {
   reset();
   files.set(
     CONFIG_PATH,
-    JSON.stringify({ version: 1, sources: { steam: { profiles: ["gabelogannewell"] } } }),
+    JSON.stringify({ version: 1, sources: { github: { repos: ["owner/repo"] } } }),
   );
 
   await ConfigManager.load();
 
-  assert.deepEqual(CONFIG.sources.steam.profiles, ["gabelogannewell"]);
+  assert.deepEqual(CONFIG.sources.github.repos, ["owner/repo"]);
 });
 
 test("load migrates a legacy plaintext apiToken into Keychain", async () => {
@@ -77,13 +76,13 @@ test("save merges overrides into the existing config file", () => {
   reset();
   files.set(
     CONFIG_PATH,
-    JSON.stringify({ version: 1, sources: { steam: { profiles: ["a"] } } }),
+    JSON.stringify({ version: 1, sources: { bluesky: { handle: "a" } } }),
   );
 
   ConfigManager.save({ github: { repos: ["owner/repo"] } });
 
   const saved = JSON.parse(files.get(CONFIG_PATH));
-  assert.deepEqual(saved.sources.steam.profiles, ["a"]);
+  assert.equal(saved.sources.bluesky.handle, "a");
   assert.deepEqual(saved.sources.github.repos, ["owner/repo"]);
   assert.equal(saved.version, 1);
   assert.ok(saved.lastModified > 0);

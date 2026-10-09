@@ -163,7 +163,7 @@ var require_config = __commonJS({
         },
         imdb: {
           name: "IMDb Popular",
-          endpoint: "/imdb",
+          endpoint: "/tmdb-trending",
           icon: "tv.fill",
           color: new Color("#F5C518"),
           // IMDb's own brand yellow
@@ -177,9 +177,7 @@ var require_config = __commonJS({
           color: new Color("#66C0F4"),
           // Steam's own brand blue
           refreshHours: 6,
-          urlScheme: "steam://",
-          profiles: []
-          // Set via widget-config.json
+          urlScheme: "steam://"
         },
         hackernews: {
           name: "Hacker News",
@@ -387,11 +385,11 @@ var require_api_client = __commonJS({
         this.timeout = 10;
       }
       async fetch(endpoint, params = {}) {
-        if (this.token) params.token = this.token;
         const url = this.buildUrl(endpoint, params);
         console.log(`Fetching: ${endpoint}`);
         const request = new Request(url);
         request.timeoutInterval = this.timeout;
+        if (this.token) request.headers = { Authorization: `Bearer ${this.token}` };
         try {
           const response = await request.loadJSON();
           console.log(`Success: ${endpoint}`);
@@ -400,26 +398,6 @@ var require_api_client = __commonJS({
           console.error(`API Error for ${endpoint}: ${error.message}`);
           console.error(`URL was: ${endpoint}`);
           throw new Error(`Failed to fetch from ${endpoint}: ${error.message}`);
-        }
-      }
-      async post(endpoint, body = {}) {
-        const params = this.token ? { token: this.token } : {};
-        const url = this.buildUrl(endpoint, params);
-        console.log(`POST: ${endpoint}`);
-        const request = new Request(url);
-        request.method = "POST";
-        request.timeoutInterval = this.timeout;
-        request.headers = {
-          "Content-Type": "application/x-www-form-urlencoded"
-        };
-        request.body = this.encodeParams(body);
-        try {
-          const response = await request.loadJSON();
-          console.log(`Success: ${endpoint}`);
-          return response;
-        } catch (error) {
-          console.error(`API Error for ${endpoint}: ${error.message}`);
-          throw new Error(`Failed to POST to ${endpoint}: ${error.message}`);
         }
       }
       encodeParams(params) {
@@ -694,13 +672,6 @@ var require_config_manager = __commonJS({
       }
       static getEditableFields(sourceName) {
         const fieldMap = {
-          steam: [
-            {
-              key: "profiles",
-              label: "Steam profiles (comma-separated)",
-              isArray: true
-            }
-          ],
           github: [
             {
               key: "repos",
@@ -720,12 +691,7 @@ var require_config_manager = __commonJS({
               isArray: true
             }
           ],
-          books: [{ key: "defaultIsbn", label: "Default ISBN" }],
-          wikipedia: [
-            { key: "usernames", label: "Username" },
-            { key: "tokens", label: "Watchlist token" },
-            { key: "languages", label: "Languages (e.g. en,de)" }
-          ]
+          books: [{ key: "defaultIsbn", label: "Default ISBN" }]
         };
         return fieldMap[sourceName] || [];
       }
@@ -973,11 +939,11 @@ var require_billboard = __commonJS({
       }
       async fetchData(widgetSize) {
         const response = await this.api.fetch(this.config.endpoint);
-        if (!response.music?.data) {
+        if (!Array.isArray(response.albums)) {
           throw new Error("Invalid Billboard data structure");
         }
         const limit = CONFIG2.sizing[widgetSize].maxItems;
-        const items = response.music.data.slice(0, limit).map((item) => ({
+        const items = response.albums.slice(0, limit).map((item) => ({
           position: item.position,
           title: FormatUtils2.cleanTitle(item.title),
           subtitle: item.artist,
@@ -990,8 +956,8 @@ var require_billboard = __commonJS({
         }));
         await DataSource2.preloadImages(items, "coverUrl", "cover");
         return {
-          title: response.music.data_title || "Billboard 200",
-          subtitle: response.music.data_desc || "",
+          title: "Billboard 200",
+          subtitle: "",
           items
         };
       }
@@ -1089,8 +1055,8 @@ var require_imdb = __commonJS({
         const response = await this.api.fetch(this.config.endpoint);
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         const half = Math.ceil(limit / 2);
-        const movies = response.movies?.data && Array.isArray(response.movies.data) ? response.movies.data.slice(0, half).map((m) => this.formatItem(m, "movie")) : [];
-        const tvShows = widgetSize !== "small" && response.tv_shows?.data && Array.isArray(response.tv_shows.data) ? response.tv_shows.data.slice(0, half).map((t) => this.formatItem(t, "tv")) : [];
+        const movies = Array.isArray(response.movies) ? response.movies.slice(0, half).map((m) => this.formatItem(m, "movie")) : [];
+        const tvShows = widgetSize !== "small" && Array.isArray(response.tv_shows) ? response.tv_shows.slice(0, half).map((t) => this.formatItem(t, "tv")) : [];
         await DataSource2.preloadImages(
           [...movies, ...tvShows],
           "imageUrl",
@@ -1209,11 +1175,7 @@ var require_steam = __commonJS({
         return !data.games || data.games.length === 0;
       }
       async fetchData(widgetSize) {
-        if (!this.config.profiles || this.config.profiles.length === 0) {
-          throw new Error("Set steam profiles in CONFIG");
-        }
-        const profiles = this.config.profiles.join(",");
-        const response = await this.api.fetch(this.config.endpoint, { profiles });
+        const response = await this.api.fetch(this.config.endpoint);
         const limit = CONFIG2.sizing[widgetSize].maxItems;
         const allGames = [];
         for (const userData of Object.values(response)) {
@@ -1221,8 +1183,8 @@ var require_steam = __commonJS({
             userData.recentGames.forEach((game) => {
               allGames.push({
                 name: game.name,
-                hoursPlayed: game.hoursPlayedNumeric || 0,
-                lastPlayedShort: game.lastPlayedShort,
+                hoursPlayed: game.hoursPlayed || 0,
+                lastPlayedShort: game.lastPlayed,
                 iconUrl: game.iconUrl || null,
                 storeUrl: game.storeUrl || ""
               });
@@ -1307,10 +1269,10 @@ var require_hacker_news = __commonJS({
             points: story.points,
             comments: story.numComments,
             author: story.author,
-            timeAgo: story.timePosted,
+            timeAgo: FormatUtils2.formatTimeAgo(story.timestamp),
             url: story.url,
             domain: story.domain || "",
-            hnUrl: story.hnUrl || ""
+            hnUrl: `https://news.ycombinator.com/item?id=${story.id}`
           }))
         };
       }
@@ -1377,7 +1339,7 @@ var require_github = __commonJS({
           repo: this.extractRepoName(release.repo),
           releaseName: release.name || "",
           tagName: release.tagName,
-          timeAgo: release.timeAgo,
+          timeAgo: FormatUtils2.formatTimeAgo(release.publishedAt),
           author: release.author,
           authorAvatarUrl: release.authorAvatarUrl || null,
           isPrerelease: release.isPrerelease,
@@ -1452,17 +1414,13 @@ var require_wikipedia = __commonJS({
         return !data.edits || data.edits.length === 0;
       }
       async fetchData(widgetSize) {
-        const body = {
-          usernames: this.config.usernames,
-          tokens: this.config.tokens,
-          languages: this.config.languages,
+        const response = await this.api.fetch(this.config.endpoint, {
           hours: this.config.hours || 72,
           limit: Math.min(
             this.config.limit || Infinity,
             CONFIG2.sizing[widgetSize].maxItems
           )
-        };
-        const response = await this.api.post(this.config.endpoint, body);
+        });
         if (!response || !Array.isArray(response.edits)) {
           return { edits: [], errors: null };
         }
@@ -1471,7 +1429,7 @@ var require_wikipedia = __commonJS({
             title: FormatUtils2.truncate(edit.title, 40),
             language: edit.language,
             user: edit.creator,
-            timeAgo: edit.timeAgo,
+            timeAgo: FormatUtils2.formatTimeAgo(edit.publishedAt),
             comment: FormatUtils2.truncate(
               FormatUtils2.stripHtml(edit.description || ""),
               60
