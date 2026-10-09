@@ -145,5 +145,5 @@ npm test        # node --test against src/
 npm run check   # build + test
 ```
 
-Copy the generated `Mosaic.js` into your Scriptable folder after building.
+The build also copies `Mosaic.js` into the Scriptable folder in iCloud Drive when this Mac has one, so the widget updates on every device. Set `SCRIPTABLE_DIR` to install somewhere else.
 

@@ -4,13 +4,13 @@
 
 iOS/macOS widgets for the [Scriptable](https://scriptable.app/) app. Source is a CommonJS module tree under `src/`, bundled by esbuild into the single committed `Mosaic.js` that runs inside Scriptable on device. Relies on Scriptable globals (`ListWidget`, `Stack`, `SFSymbol`, `Font`, `Color`, `Request`, `FileManager`, `Keychain`, `Script`, `Location`, `config`, `args`).
 
-- `npm run build` — bundle `src/index.js` → `Mosaic.js` (Scriptable metadata banner comes from `build.mjs`)
+- `npm run build` — bundle `src/index.js` → `Mosaic.js` (Scriptable metadata banner comes from `build.mjs`), then copy it into the Scriptable iCloud folder if this Mac has one (`SCRIPTABLE_DIR` overrides the path). A build therefore updates the widget on every device; `npm run check` builds too.
 - `npm test` / `node --test` — run the suite in `test/` against `src/` directly (no build needed)
 - `npm run check` — build, then test
 
 `src/index.js` is a thin composition root: it wires modules, re-exports the public surface for tests, and runs the app only when `Script` is defined (an IIFE, not top-level await, so Node can `require` it). `test/scriptable-stubs.js` stubs the Scriptable globals touched at module-load time (currently just `Color`); extend it if a future test needs to exercise rendering.
 
-Widget rendering is interactive only: build, copy `Mosaic.js` to the Scriptable iCloud folder, run in the Scriptable app. Pure logic (`FormatUtils`, StatusBoard extractor coverage, per-source config validation) is covered by `node --test`.
+Widget rendering is interactive only: build (which installs `Mosaic.js` in the Scriptable iCloud folder), then run it in the Scriptable app. Pure logic (`FormatUtils`, StatusBoard extractor coverage, per-source config validation) is covered by `node --test`.
 
 ## Architecture
 
