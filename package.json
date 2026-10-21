@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "test": "node --test",
+    "preview": "node scripts/preview.js",
     "check": "npm run build && node --test"
   },
   "devDependencies": {

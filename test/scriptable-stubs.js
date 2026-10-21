@@ -6,6 +6,9 @@
 // of a stack tree (flexible spacers collapse to 0, text reserves its lineLimit)
 // and compares it to the widget family's drawable canvas. That is enough to flag
 // gross overflow; it is not a pixel-accurate reimplementation of UIKit.
+//
+// The stubs also record alignment and whether an image is an SF Symbol, which
+// scripts/preview.js reads to draw the tree as monospace art.
 
 class Color {
   constructor(hex, alpha) {
@@ -53,14 +56,15 @@ class Font {
 }
 
 class Image {
-  constructor(name) {
+  constructor(name, isSymbol = false) {
     this.name = name;
+    this.isSymbol = isSymbol;
   }
 }
 
 const SFSymbol = {
   named(name) {
-    return { image: new Image(name) };
+    return { image: new Image(name, true) };
   },
 };
 
@@ -72,10 +76,17 @@ class TextElement {
     this.textColor = null;
     this.lineLimit = 0;
     this.url = null;
+    this.align = "left";
   }
-  centerAlignText() {}
-  rightAlignText() {}
-  leftAlignText() {}
+  centerAlignText() {
+    this.align = "center";
+  }
+  rightAlignText() {
+    this.align = "right";
+  }
+  leftAlignText() {
+    this.align = "left";
+  }
 }
 
 class ImageElement {
@@ -100,6 +111,7 @@ class Stack {
     this.backgroundColor = null;
     this.cornerRadius = 0;
     this.url = null;
+    this.align = "start";
   }
   layoutHorizontally() {
     this.direction = "horizontal";
@@ -107,7 +119,15 @@ class Stack {
   layoutVertically() {
     this.direction = "vertical";
   }
-  centerAlignContent() {}
+  topAlignContent() {
+    this.align = "start";
+  }
+  centerAlignContent() {
+    this.align = "center";
+  }
+  bottomAlignContent() {
+    this.align = "end";
+  }
   addStack() {
     const child = new Stack();
     this.children.push(child);
